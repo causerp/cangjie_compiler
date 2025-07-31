@@ -276,6 +276,32 @@ main(){
     EXPECT_EQ(diag.GetErrorCount(), 0);
 }
 
+TEST(EngineTest, differentDiagnoseAtSamePositionShouldBeAllPrinted)
+{
+    DiagnosticEngine diag;
+    auto code = R"(
+interface I {
+    func func1(): Unit
+    func func2(): Unit
+}
+class A <: I {}
+main(){}
+)";
+    auto file = std::string{"test.cj"};
+    SourceManager sm;
+    sm.AddSource(file | FileUtil::IdenticalFunc, std::string(code));
+    diag.SetSourceManager(&sm);
+    auto classA = ClassDecl();
+    classA.begin = Position{1, 6, 1};
+    classA.end = Position{1, 6, 1};
+
+    diag.Diagnose(classA, DiagKind::sema_class_need_abstract_modifier_or_func_need_impl,
+                        "A", "function", "func1");
+    diag.Diagnose(classA, DiagKind::sema_class_need_abstract_modifier_or_func_need_impl,
+                        "A", "function", "func2");
+    EXPECT_EQ(diag.GetErrorCount(), 2);
+}
+
 #ifdef __unix__
 TEST(EngineTest, ShowColorTest)
 {

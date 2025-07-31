@@ -538,16 +538,21 @@ public:
         return std::vector<Diagnostic>{set.begin(), set.end()};
     }
     struct hashFunc {
-        // Only take the position and severity into account, if it is too restricted.
+        // We consider position, diagSeverity, errorMessage and diagMessage.
+        // Two different diagnostic may appear in the same position,
+        // so it's not enough if we only consider position and diagSeverity.
+        // See https://gitcode.com/Cangjie/UsersForum/issues/1978 for more information.
         size_t operator()(const Diagnostic& diag) const
         {
-            return (diag.mainHint.range.Hash() >> 1) ^ (diag.diagSeverity == DiagSeverity::DS_ERROR);
+            return (diag.mainHint.range.Hash() >> 1) ^ (diag.diagSeverity == DiagSeverity::DS_ERROR)
+                ^ std::hash<std::string>()(diag.errorMessage) ^ std::hash<std::string>()(diag.diagMessage);
         }
     };
     struct equalFunc {
         bool operator()(const Diagnostic& a, const Diagnostic& b) const
         {
-            return a.mainHint.range == b.mainHint.range && (a.diagSeverity == b.diagSeverity);
+            return a.mainHint.range == b.mainHint.range && (a.diagSeverity == b.diagSeverity)
+                && (a.errorMessage == b.errorMessage) && (a.diagMessage == b.diagMessage);
         }
     };
     void Clear() const override
