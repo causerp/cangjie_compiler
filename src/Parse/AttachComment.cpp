@@ -255,7 +255,7 @@ size_t AttachCommentToNode(const std::vector<Ptr<Node>>& nodes, size_t curNodeId
         CJC_ASSERT(!curCg.cms.empty());
         CJC_ASSERT(curCgBegin != curNodeBegin);
         if (curCgBegin < curNodeBegin) {
-            nodes[curNodeIdx]->comments.leadComents.push_back(curCg); // rule2
+            nodes[curNodeIdx]->comments.leadComments.push_back(curCg); // rule2
         } else if (curCgBegin < curNodeEnd) {
             if (curNodeIdx + 1 < nodes.size() && nodes[curNodeIdx + 1]->GetBegin() < curNodeEnd) {
                 nodeStack.push(curNodeIdx);
