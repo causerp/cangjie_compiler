@@ -102,8 +102,8 @@ std::string GetFuncIdent(const Func& func)
 
 bool ShouldSkipUselessFuncElimination(const Package& package, const Cangjie::GlobalOptions& opts)
 {
-    if (opts.enableCompileDebug || opts.enableCoverage || opts.enIncrementalCompilation ||
-        package.GetName() == Cangjie::REFLECT_PACKAGE_NAME) {
+    if (opts.optimizationLevel < Cangjie::GlobalOptions::OptimizationLevel::O2 || opts.enableCoverage ||
+        opts.enIncrementalCompilation || package.GetName() == Cangjie::REFLECT_PACKAGE_NAME) {
         return true;
     }
     return false;
