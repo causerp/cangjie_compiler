@@ -206,7 +206,7 @@ struct Info {
         return vendor == Vendor::APPLE && (os == OSType::DARWIN || os == OSType::IOS);
     }
 
-    inline bool IsArm32() const 
+    inline bool IsArm32() const
     {
         return arch == ArchType::ARM32;
     }
