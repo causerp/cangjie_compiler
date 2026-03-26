@@ -33,7 +33,13 @@ public:
     // Super Parent
     // ===--------------------------------------------------------------------===//
     void RemoveParent(ClassType& parent);
-    
+
+    // ===--------------------------------------------------------------------===//
+    // Extra constraint pairs (left <: right) where left is not a single GenericType.
+    // ===--------------------------------------------------------------------===//
+    const std::vector<std::pair<Type*, Type*>>& GetExtraConstraintPairs() const;
+    void SetExtraConstraintPairs(std::vector<std::pair<Type*, Type*>>&& pairs);
+
 protected:
     void PrintAttrAndTitle(std::stringstream& ss) const override;
     void PrintComment(std::stringstream& ss) const override;
@@ -44,6 +50,7 @@ private:
 
     Type* extendedType{nullptr};
     std::vector<GenericType*> genericParams;
+    std::vector<std::pair<Type*, Type*>> extraConstraintPairs;
 };
 }
 #endif
