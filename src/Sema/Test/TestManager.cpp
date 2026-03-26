@@ -685,17 +685,19 @@ void TestManager::MarkDeclsForTestIfNeeded(std::vector<Ptr<Package>> pkgs) const
 
         BaseMangler mangler;
         auto manglerCtx = exportForTest ? mangler.PrepareContextForPackage(pkg) : nullptr;
+        if (manglerCtx) {
+            mangler.CollectLocalDecls(*manglerCtx, *pkg);
+        }
         auto isInExtend = false;
 
         Walker(pkg, Walker::GetNextWalkerID(),
-            [this, &shouldBeMarkedForMocks, &mangler, &manglerCtx, &isInExtend]
+            [this, &shouldBeMarkedForMocks, &mangler, &isInExtend]
         (auto node) {
             if (shouldBeMarkedForMocks) {
                 MockSupportManager::MarkNodeMockSupportedIfNeeded(*node);
             }
             if (exportForTest) {
                 if (auto ed = As<ASTKind::EXTEND_DECL>(node); ed && !ed->TestAttr(Attribute::IMPORTED)) {
-                    manglerCtx->SaveExtend2CurFile(ed->curFile, ed);
                     isInExtend = true;
                 }
                 if (auto d = As<ASTKind::DECL>(node); d &&
