@@ -35,16 +35,17 @@ using namespace Sema;
 using namespace TypeCheckUtil;
 
 namespace {
-void InsertEnumConstructors(ASTContext& ctx, const EnumDecl& ed)
+void InsertEnumConstructors(ASTContext& ctx, const EnumDecl& ed, bool enableMacroInLsp)
 {
     for (auto& ctor : ed.constructors) {
         CJC_NULLPTR_CHECK(ctor);
         if (ctor->astKind == ASTKind::VAR_DECL) {
-            ctx.InsertEnumConstructor(ctor->identifier, 0, *ctor);
+            ctx.InsertEnumConstructor(ctor->identifier, 0, *ctor, enableMacroInLsp);
         } else if (ctor->astKind == ASTKind::FUNC_DECL) {
             auto& fd = StaticCast<FuncDecl&>(*ctor);
             CJC_ASSERT(fd.funcBody && fd.funcBody->paramLists.size() == 1 && fd.funcBody->paramLists.front());
-            ctx.InsertEnumConstructor(fd.identifier, fd.funcBody->paramLists.front()->params.size(), fd);
+            ctx.InsertEnumConstructor(
+                fd.identifier, fd.funcBody->paramLists.front()->params.size(), fd, enableMacroInLsp);
         }
     }
 }
@@ -393,7 +394,7 @@ void TypeChecker::TypeCheckerImpl::BuildImportedEnumConstructorMap(ASTContext& c
                 if (!ed || visited.count(ed) != 0) {
                     continue;
                 }
-                InsertEnumConstructors(ctx, *ed);
+                InsertEnumConstructors(ctx, *ed, ci->invocation.globalOptions.enableMacroInLSP);
             }
         }
     }
@@ -404,7 +405,7 @@ void TypeChecker::TypeCheckerImpl::BuildEnumConstructorMap(ASTContext& ctx) cons
     auto syms = GetSymsByASTKind(ctx, ASTKind::ENUM_DECL);
     for (auto sym : syms) {
         if (auto ed = DynamicCast<EnumDecl*>(sym->node)) {
-            InsertEnumConstructors(ctx, *ed);
+            InsertEnumConstructors(ctx, *ed, ci->invocation.globalOptions.enableMacroInLSP);
         }
     }
 }
