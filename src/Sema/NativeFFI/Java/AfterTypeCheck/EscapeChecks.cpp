@@ -54,7 +54,7 @@ void CollectJavaTypesAndDiag(DiagnosticEngine& diag, const RefType& type)
 {
     std::vector<Ptr<Decl>> javaDecls;
     for (auto& typeArg : type.typeArguments) {
-        CollectJavaTypes(typeArg->ty, javaDecls);
+        CollectJavaTypes(typeArg->GetTy(), javaDecls);
     }
     DiagJavaTypesAsGenericParam(diag, type, std::move(javaDecls));
 }
@@ -71,10 +71,10 @@ bool IsInstantiationWithJavaTypeAllowed(NameReferenceExpr& expr)
         return true;
     }
 
-    if (IsInstantiationWithJavaTypeAllowed(target->ty)) {
+    if (IsInstantiationWithJavaTypeAllowed(target->GetTy())) {
         return true;
     }
-    if (target->outerDecl && IsInstantiationWithJavaTypeAllowed(target->outerDecl->ty)) {
+    if (target->outerDecl && IsInstantiationWithJavaTypeAllowed(target->outerDecl->GetTy())) {
         return true;
     }
 
@@ -91,7 +91,7 @@ void JavaInteropManager::CheckGenericsInstantiation(Decl& decl)
                 CollectJavaTypesAndDiag(diag, *nameRefExpr);
             }
         } else if (auto refType = DynamicCast<RefType>(node)) {
-            if (!IsInstantiationWithJavaTypeAllowed(refType->ty)) {
+            if (!IsInstantiationWithJavaTypeAllowed(refType->GetTy())) {
                 CollectJavaTypesAndDiag(diag, *refType);
             }
         }
