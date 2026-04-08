@@ -12,6 +12,7 @@
 #include "cangjie/CHIR/AST2CHIR/GenerateVTable/UpdateOperatorVTable.h"
 #include "cangjie/CHIR/AST2CHIR/GenerateVTable/VTableGenerator.h"
 #include "cangjie/CHIR/AST2CHIR/GenerateVTable/WrapVirtualFunc.h"
+#include "cangjie/CHIR/Transformation/AddIndirectExtend.h"
 #include "cangjie/CHIR/AST2CHIR/TranslateASTNode/Translator.h"
 #include "cangjie/CHIR/AST2CHIR/Utils.h"
 #include "cangjie/CHIR/CHIRCasting.h"
@@ -1207,12 +1208,21 @@ void AST2CHIR::SetVTable()
     }
     Utils::ProfileRecorder::Stop("TranslateNominalDecls", "SetVTable");
 
+    std::vector<ExtendDef*> newExtendDefs = AddIndirectExtend(*package, builder);
+    for (auto def : newExtendDefs) {
+        if (def->TestAttr(Attribute::SKIP_ANALYSIS)) {
+            continue;
+        }
+        vtableGenerator.GenerateVTable(*def);
+    }
+
     UpdateOperatorVTable(*package, builder).Update();
 
     Utils::ProfileRecorder::Start("TranslateNominalDecls", "SetWrapperFunc");
     bool targetIsWin = opts.target.os == Triple::OSType::WINDOWS;
     IncreKind tempKind = opts.enIncrementalCompilation ? kind : IncreKind::INVALID;
     auto wrapper = WrapVirtualFunc(builder, cachedInfo, tempKind, targetIsWin);
+    allCustomTypeDef = package->GetAllCustomTypeDef();
     for (auto customDef : allCustomTypeDef) {
         if (customDef->TestAttr(Attribute::SKIP_ANALYSIS)) {
             continue;

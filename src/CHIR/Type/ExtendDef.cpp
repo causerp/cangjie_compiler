@@ -40,6 +40,18 @@ void ExtendDef::PrintAttrAndTitle(std::stringstream& ss) const
     }
     ss << CustomTypeKindToString(*this) << GenericDefArgsToString() << " " << extendedTyStr;
     PrintParent(ss);
+    if (!extraConstraintPairs.empty()) {
+        ss << ", extraConstraints: ";
+        for (size_t i = 0; i < extraConstraintPairs.size(); ++i) {
+            if (i > 0) {
+                ss << ", ";
+            }
+            if (extraConstraintPairs[i].first && extraConstraintPairs[i].second) {
+                ss << extraConstraintPairs[i].first->ToString() << " <: "
+                   << extraConstraintPairs[i].second->ToString();
+            }
+        }
+    }
 }
 
 void ExtendDef::PrintComment(std::stringstream& ss) const
@@ -84,4 +96,14 @@ void ExtendDef::SetType(CustomType& ty)
 std::vector<GenericType*> ExtendDef::GetGenericTypeParams() const
 {
     return genericParams;
+}
+
+const std::vector<std::pair<Type*, Type*>>& ExtendDef::GetExtraConstraintPairs() const
+{
+    return extraConstraintPairs;
+}
+
+void ExtendDef::SetExtraConstraintPairs(std::vector<std::pair<Type*, Type*>>&& pairs)
+{
+    extraConstraintPairs = std::move(pairs);
 }
