@@ -875,6 +875,9 @@ void AST2CHIR::CreateImportedValueSignatureAndSetGlobalCache(const AST::VarDecl&
     if (varDecl.IsConst()) {
         var->EnableAttr(Attribute::CONST);
     }
+    // in cjdb, using expr will generate a wrong AST decl
+    // an AST decl in imported package but without IMPORTED attr
+    var->EnableAttr(Attribute::IMPORTED);
 
     globalCache.Set(varDecl, *var);
 }
