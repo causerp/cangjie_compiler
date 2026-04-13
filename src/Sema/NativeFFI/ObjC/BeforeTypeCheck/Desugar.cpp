@@ -23,6 +23,7 @@ constexpr std::string_view INIT_PARAM_IDENT = "str";
 void AddFuncDeclToClass(FuncDecl& decl, ClassDecl& target)
 {
     decl.curFile = target.curFile;
+    decl.identifier.SetPos(target.body->end, target.body->end);
     decl.begin = target.body->end;
     decl.end = target.body->end;
     decl.EnableAttr(Attribute::IN_CLASSLIKE);
