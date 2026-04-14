@@ -36,6 +36,7 @@ template <typename T> using TVectorOffset = flatbuffers::Offset<flatbuffers::Vec
 using TPosition = PackageFormat::Position;
 using TFeaturesSet = PackageFormat::FeaturesSet;
 using TFeaturesDirective = PackageFormat::FeaturesDirective;
+using TCompilationOptions = flatbuffers::Offset<PackageFormat::CompilationOptions>;
 using TDeclHash = PackageFormat::DeclHash;
 using PackageIndex = int32_t;
 
