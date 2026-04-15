@@ -64,6 +64,20 @@ std::ostream& operator<<(std::ostream& out, Span const& span)
     return out;
 }
 
+template <typename T>
+std::string JoinNodeStrings(const std::vector<OwnedPtr<T>>& nodes, const std::string& separator)
+{
+    std::string ret;
+    for (size_t i = 0; i < nodes.size(); ++i) {
+        if (i > 0) {
+            ret += separator;
+        }
+        CJC_NULLPTR_CHECK(nodes[i]);
+        ret += nodes[i]->ToString();
+    }
+    return ret;
+}
+
 /**
  * @brief Get the end position of a token in *.macrocall file by the same token's position in curfile.
  * @param key: the Hash value of line and column about token's end position in curfile.
@@ -1525,6 +1539,96 @@ std::string OptionalChainExpr::ToString() const
 std::string PrimitiveTypeExpr::ToString() const
 {
     return Ty::KindName(typeKind);
+}
+
+std::string WildcardPattern::ToString() const
+{
+    return "_";
+}
+
+std::string ConstPattern::ToString() const
+{
+    CJC_NULLPTR_CHECK(literal);
+    return literal->ToString();
+}
+
+std::string VarPattern::ToString() const
+{
+    if (varDecl) {
+        return varDecl->identifier.Val();
+    }
+    return "";
+}
+
+std::string TuplePattern::ToString() const
+{
+    return "(" + JoinNodeStrings(patterns, ", ") + ")";
+}
+
+std::string TypePattern::ToString() const
+{
+    CJC_NULLPTR_CHECK(pattern);
+    CJC_NULLPTR_CHECK(type);
+    std::string ret = pattern->ToString();
+    if (!ret.empty()) {
+        ret += ": ";
+    }
+    ret += type->ToString();
+    return ret;
+}
+
+std::string EnumPattern::ToString() const
+{
+    CJC_NULLPTR_CHECK(constructor);
+    std::string ret = constructor->ToString();
+    if (!patterns.empty()) {
+        ret += "(" + JoinNodeStrings(patterns, ", ") + ")";
+    }
+    return ret;
+}
+
+std::string VarOrEnumPattern::ToString() const
+{
+    if (pattern) {
+        return pattern->ToString();
+    }
+    return identifier.Val();
+}
+
+std::string ExceptTypePattern::ToString() const
+{
+    CJC_NULLPTR_CHECK(pattern);
+    std::string ret = pattern->ToString();
+    if (!types.empty()) {
+        if (!ret.empty()) {
+            ret += ": ";
+        }
+        ret += JoinNodeStrings(types, " | ");
+    }
+    return ret;
+}
+
+std::string CommandTypePattern::ToString() const
+{
+    CJC_NULLPTR_CHECK(pattern);
+    std::string ret = pattern->ToString();
+    if (!types.empty()) {
+        if (!ret.empty()) {
+            ret += ": ";
+        }
+        ret += JoinNodeStrings(types, " | ");
+    }
+    return ret;
+}
+
+std::string LetPatternDestructor::ToString() const
+{
+    std::string ret = "let ";
+    ret += JoinNodeStrings(patterns, " | ");
+    ret += " <- ";
+    CJC_NULLPTR_CHECK(initializer);
+    ret += initializer->ToString();
+    return ret;
 }
 
 } // namespace Cangjie
