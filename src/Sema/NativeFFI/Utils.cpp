@@ -265,6 +265,7 @@ bool IsObjCGeneratedNSStringCtor(const Decl& target)
         return false;
     }
 
+    CJC_ASSERT(funcDecl->funcBody);
     auto& paramLists = funcDecl->funcBody->paramLists;
     CJC_ASSERT(paramLists.size() > 0);
     auto& params = paramLists[0]->params;
@@ -279,8 +280,15 @@ bool IsObjCGeneratedNSObjectToString(const Decl& target)
 {
     auto funcDecl = DynamicCast<const FuncDecl>(&target);
     if (!funcDecl || funcDecl->identifier.Val() != TOSTRING_METHOD_IDENT ||
-        funcDecl->funcBody->retType->symbol->name != STD_LIB_STRING ||
-        !funcDecl->TestAttr(Attribute::COMPILER_ADD)) {
+        !funcDecl->TestAttr(Attribute::COMPILER_ADD) || !funcDecl->funcBody) {
+        return false;
+    }
+
+    CJC_ASSERT(funcDecl->funcBody);
+    auto& paramLists = funcDecl->funcBody->paramLists;
+    CJC_ASSERT(paramLists.size() > 0);
+    auto& params = paramLists[0]->params;
+    if (params.size() != 0) {
         return false;
     }
 
