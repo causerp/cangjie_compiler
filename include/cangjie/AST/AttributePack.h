@@ -18,6 +18,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+#include "cangjie/Utils/Macros.h"
 
 namespace Cangjie::AST {
 using AttrSizeType = uint64_t;
@@ -677,13 +678,7 @@ enum class Attribute {
     AST_ATTR_END,
 };
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#else
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
+SUPPRESS_WARNING("-Wdeprecated-declarations")
 static const std::unordered_map<AST::Attribute, std::string> ATTR2STR{
     {AST::Attribute::IN_REFERENCE_CYCLE, "IN_REFERENCE_CYCLE"},
     {AST::Attribute::UNREACHABLE, "UNREACHABLE"},
@@ -782,11 +777,7 @@ static const std::unordered_map<AST::Attribute, std::string> ATTR2STR{
     {AST::Attribute::CJ_MIRROR_OBJC_INTERFACE_FWD, "CJ_MIRROR_OBJC_INTERFACE_FWD"},
     {AST::Attribute::AST_ATTR_END, "AST_ATTR_END"},
 };
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#else
-#pragma GCC diagnostic pop
-#endif
+UNSUPPRESS_WARNING()
 
 class AttributePack {
 public:
