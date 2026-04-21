@@ -528,6 +528,7 @@ void RewriteObjCTypechecks::HandleImpl(InteropContext& ctx)
                     break;
                 case ASTKind::WHILE_EXPR:
                     DesugarWhileExpr(ctx, *StaticAs<ASTKind::WHILE_EXPR>(node));
+                    break;
                 default:
                     break;
             }
