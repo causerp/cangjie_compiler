@@ -601,7 +601,11 @@ public:
 
     std::optional<unsigned int> errorCountLimit = 8; /**< limits the amount of errors compiler prints */
 
+#ifdef CANGJIE_CHIR_WFC_OFF
+    bool chirWFC = false;
+#else
     bool chirWFC = true; /**< Whether enable well-formedness check on CHIR. */
+#endif
     bool chirEA = false;   /**< Whether enable escape analysis on CHIR. */
     bool chirLICM = false; /**< Whether enable LICM on CHIR (this depends on escape analysis) */
 
