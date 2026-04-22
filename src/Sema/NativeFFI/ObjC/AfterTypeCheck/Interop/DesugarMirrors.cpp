@@ -119,7 +119,8 @@ void DesugarMirrors::DesugarStaticMethodInitializer(InteropContext& ctx, FuncDec
     auto retTy = StaticCast<FuncTy>(initializer.ty)->retTy;
 
     auto initCall = ctx.factory.CreateAllocInitCall(initializer);
-    auto returnExpr = WithinFile(CreateReturnExpr(std::move(initCall)), curFile);
+    auto wrappedInit = ctx.factory.WrapEntity(std::move(initCall), *retTy);
+    auto returnExpr = WithinFile(CreateReturnExpr(std::move(wrappedInit)), curFile);
     returnExpr->ty = TypeManager::GetNothingTy();
     initializer.funcBody->body = CreateBlock({}, retTy);
     initializer.funcBody->body->body.emplace_back(std::move(returnExpr));
