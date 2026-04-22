@@ -19,8 +19,10 @@
 
 #include "TypeCheckUtil.h"
 
+#include "TypeCheckerImpl.h"
 #include "cangjie/AST/AttributePack.h"
 #include "cangjie/AST/Match.h"
+#include "cangjie/AST/Node.h"
 #include "cangjie/AST/Utils.h"
 #include "cangjie/Basic/DiagnosticEngine.h"
 #include "cangjie/Utils/CheckUtils.h"
@@ -637,10 +639,23 @@ void DiagAmbiguousUpperBoundTargets(DiagnosticEngine& diag, const MemberAccess& 
     }
 }
 
-void DiagUseClosureCaptureVarAlone(DiagnosticEngine& diag, const Expr& expr)
+void DiagUseClosureCaptureVarAlone(DiagnosticEngine& diag, const Expr& expr, LambdaSource lambdaSource)
 {
-    auto builder = diag.DiagnoseRefactor(DiagKindRefactor::sema_use_func_capture_var_alone, expr,
-        expr.astKind == ASTKind::LAMBDA_EXPR ? "lambda" : "function");
+    auto getBuilder = [&diag, &expr, lambdaSource]() {
+        if (expr.astKind == ASTKind::LAMBDA_EXPR) {
+            switch (lambdaSource) {
+                case LambdaSource::SPAWN:
+                    return diag.DiagnoseRefactor(DiagKindRefactor::sema_spawn_capture_var, expr);
+                case LambdaSource::TRY_HANDLE:
+                    return diag.DiagnoseRefactor(DiagKindRefactor::sema_try_handle_capture_var, expr);
+                case LambdaSource::USER:
+                    return diag.DiagnoseRefactor(DiagKindRefactor::sema_use_func_capture_var_alone, expr, "lambda");
+            }
+        } else {
+            return diag.DiagnoseRefactor(DiagKindRefactor::sema_use_func_capture_var_alone, expr, "function");
+        }
+    };
+    auto builder = getBuilder();
     Ptr<FuncBody> fb = nullptr;
     if (auto le = DynamicCast<const LambdaExpr*>(&expr)) {
         fb = le->funcBody.get();
