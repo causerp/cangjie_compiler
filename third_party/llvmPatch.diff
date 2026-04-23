@@ -34992,7 +34992,7 @@ index 1943b5db9..0c8822991 100644
    IndirectSymbolInits.push_back(std::make_pair(NewGA, Val));
    return Error::success();
 diff --git a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
-index d7e012fb6..0dced4209 100644
+index d7e012fb6..e2a2d0d57 100644
 --- a/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
 +++ b/llvm/lib/Bitcode/Writer/BitcodeWriter.cpp
 @@ -780,6 +780,8 @@ static uint64_t getAttrKindEncoding(Attribute::AttrKind Kind) {
@@ -35004,6 +35004,99 @@ index d7e012fb6..0dced4209 100644
    case Attribute::EndAttrKinds:
      llvm_unreachable("Can not encode end-attribute kinds marker.");
    case Attribute::None:
+@@ -4671,6 +4673,9 @@ void BitcodeWriter::writeModule(const Module &M,
+   assert(M.isMaterialized());
+   Mods.push_back(const_cast<Module *>(&M));
+ 
++  if (GenerateHash)
++    CanonicalizeBitcodeWriterUseListOrder(*Mods.back());
++
+   ModuleBitcodeWriter ModuleWriter(M, Buffer, StrtabBuilder, *Stream,
+                                    ShouldPreserveUseListOrder, Index,
+                                    GenerateHash, ModHash);
+diff --git a/llvm/lib/Bitcode/Writer/ValueEnumerator.cpp b/llvm/lib/Bitcode/Writer/ValueEnumerator.cpp
+index 998f629aa..3dd2bb3e3 100644
+--- a/llvm/lib/Bitcode/Writer/ValueEnumerator.cpp
++++ b/llvm/lib/Bitcode/Writer/ValueEnumerator.cpp
+@@ -11,6 +11,7 @@
+ //===----------------------------------------------------------------------===//
+ 
+ #include "ValueEnumerator.h"
++#include "llvm/ADT/SmallPtrSet.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "llvm/Config/llvm-config.h"
+ #include "llvm/IR/Argument.h"
+@@ -220,6 +221,54 @@ static void predictValueUseListOrderImpl(const Value *V, const Function *F,
+     Stack.back().Shuffle[I] = List[I].second;
+ }
+ 
++static bool isBeforeInBitcodeUseListOrder(const Use &L, const Use &R,
++                                          unsigned ID, const OrderMap &OM) {
++  if (&L == &R)
++    return false;
++
++  auto LID = OM.lookup(L.getUser()).first;
++  auto RID = OM.lookup(R.getUser()).first;
++  bool IsGlobalValue = OM.isGlobalValue(ID);
++
++  if (LID < RID) {
++    if (RID <= ID)
++      if (!IsGlobalValue)
++        return true;
++    return false;
++  }
++  if (RID < LID) {
++    if (LID <= ID)
++      if (!IsGlobalValue)
++        return false;
++    return true;
++  }
++
++  if (LID <= ID)
++    if (!IsGlobalValue)
++      return L.getOperandNo() < R.getOperandNo();
++  return L.getOperandNo() > R.getOperandNo();
++}
++
++void llvm::CanonicalizeBitcodeWriterUseListOrder(Module &M) {
++  OrderMap OM = orderModule(M);
++
++  SmallVector<std::pair<Value *, unsigned>, 0> OrderedValues;
++  OrderedValues.reserve(OM.IDs.size());
++  for (const auto &Entry : OM.IDs)
++    OrderedValues.emplace_back(const_cast<Value *>(Entry.first),
++                               Entry.second.first);
++  llvm::sort(OrderedValues, llvm::less_second());
++
++  for (const auto &Entry : OrderedValues) {
++    Value *V = Entry.first;
++    unsigned ID = Entry.second;
++    if (V->use_empty() || std::next(V->use_begin()) == V->use_end())
++      continue;
++    V->sortUseList(
++        [&](const Use &L, const Use &R) { return isBeforeInBitcodeUseListOrder(L, R, ID, OM); });
++  }
++}
++
+ static void predictValueUseListOrder(const Value *V, const Function *F,
+                                      OrderMap &OM, UseListOrderStack &Stack) {
+   auto &IDPair = OM[V];
+diff --git a/llvm/lib/Bitcode/Writer/ValueEnumerator.h b/llvm/lib/Bitcode/Writer/ValueEnumerator.h
+index 6c3f6d4ff..5003ae65d 100644
+--- a/llvm/lib/Bitcode/Writer/ValueEnumerator.h
++++ b/llvm/lib/Bitcode/Writer/ValueEnumerator.h
+@@ -300,6 +300,11 @@ private:
+   void EnumerateNamedMetadata(const Module &M);
+ };
+ 
++/// Canonicalize use-list order to a deterministic bitcode-writer order before
++/// serialization. This mutates the in-memory module but does not change IR
++/// semantics.
++void CanonicalizeBitcodeWriterUseListOrder(Module &M);
++
+ } // end namespace llvm
+ 
+ #endif // LLVM_LIB_BITCODE_WRITER_VALUEENUMERATOR_H
 diff --git a/llvm/lib/CMakeLists.txt b/llvm/lib/CMakeLists.txt
 index 5ecdf5af9..99f246d58 100644
 --- a/llvm/lib/CMakeLists.txt
