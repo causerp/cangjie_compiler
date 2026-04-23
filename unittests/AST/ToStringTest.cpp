@@ -47,6 +47,19 @@ OwnedPtr<Decl> ParseDeclFromSrc(const std::string& src)
     return parser.ParseDecl(ScopeKind::TOPLEVEL);
 }
 
+OwnedPtr<Decl> ParseDeclFromSrcExperimental(const std::string& src)
+{
+    static DiagnosticEngine diag;
+    static SourceManager sm;
+    sm.AddSource("./", src);
+    diag.SetSourceManager(&sm);
+    Parser parser(src, diag, diag.GetSourceManager(), {});
+    GlobalOptions opts;
+    opts.enableEH = true;
+    parser.SetCompileOptions(opts);
+    return parser.ParseDecl(ScopeKind::TOPLEVEL);
+}
+
 OwnedPtr<File> ParseFileFromSrc(const std::string& src)
 {
     static DiagnosticEngine diag;
@@ -196,10 +209,9 @@ TEST(ToStringTest, TypeAndSpecialTypeRestore)
 
 TEST(ToStringTest, PrimitiveTypeToStringPrefersSourceSpelling)
 {
-    auto primitiveType = MakeOwned<PrimitiveType>();
-    primitiveType->str = "Int32";
-    primitiveType->kind = TypeKind::TYPE_INVALID;
-
+    auto primitiveType = ParseTypeFromSrc("Int32");
+    ASSERT_NE(primitiveType, nullptr) << "Failed to parse type: Int32";
+    ASSERT_TRUE(Is<PrimitiveType>(primitiveType.get()));
     EXPECT_EQ("Int32", primitiveType->ToString());
 }
 
@@ -233,4 +245,161 @@ TEST(ToStringTest, TypeAndOptionalExprRestore)
     ASSERT_TRUE(Is<PrimitiveTypeExpr>(memberAccess->baseExpr.get()));
     EXPECT_EQ("Int64", memberAccess->baseExpr->ToString());
     EXPECT_EQ("Int64.foo()", primitiveTypeExprCall->ToString());
+}
+
+TEST(ToStringTest, PatternLeafAndLetPatternRestore)
+{
+    auto wildcardExpr = ParseExprFromSrc("if(let _ <- x) {}");
+    ASSERT_NE(wildcardExpr, nullptr) << "Failed to parse expr: if(let _ <- x) {}";
+    ASSERT_TRUE(Is<IfExpr>(wildcardExpr.get()));
+    auto wildcardIfExpr = As<ASTKind::IF_EXPR>(wildcardExpr.get());
+    ASSERT_NE(wildcardIfExpr->condExpr, nullptr);
+    ASSERT_TRUE(Is<LetPatternDestructor>(wildcardIfExpr->condExpr.get()));
+    auto wildcardLetPattern = As<ASTKind::LET_PATTERN_DESTRUCTOR>(wildcardIfExpr->condExpr.get());
+    ASSERT_EQ(wildcardLetPattern->patterns.size(), 1);
+    ASSERT_NE(wildcardLetPattern->patterns[0], nullptr);
+    ASSERT_TRUE(Is<WildcardPattern>(wildcardLetPattern->patterns[0].get()));
+    EXPECT_EQ("_", wildcardLetPattern->patterns[0]->ToString());
+    EXPECT_EQ("let _ <- x", wildcardLetPattern->ToString());
+
+    auto constExpr = ParseExprFromSrc("match (x) { case 1 => 1 }");
+    ASSERT_NE(constExpr, nullptr) << "Failed to parse expr: match (x) { case 1 => 1 }";
+    ASSERT_TRUE(Is<MatchExpr>(constExpr.get()));
+    auto constMatchExpr = As<ASTKind::MATCH_EXPR>(constExpr.get());
+    ASSERT_FALSE(constMatchExpr->matchCases.empty());
+    ASSERT_EQ(constMatchExpr->matchCases[0]->patterns.size(), 1);
+    ASSERT_TRUE(Is<ConstPattern>(constMatchExpr->matchCases[0]->patterns[0].get()));
+    auto constPattern = As<ASTKind::CONST_PATTERN>(constMatchExpr->matchCases[0]->patterns[0].get());
+    EXPECT_EQ("1", constPattern->ToString());
+
+    auto ifLetExpr = ParseExprFromSrc("if(let value <- x) {}");
+    ASSERT_NE(ifLetExpr, nullptr) << "Failed to parse expr: if(let value <- x) {}";
+    ASSERT_TRUE(Is<IfExpr>(ifLetExpr.get()));
+    auto ifExpr = As<ASTKind::IF_EXPR>(ifLetExpr.get());
+    ASSERT_NE(ifExpr->condExpr, nullptr);
+    ASSERT_TRUE(Is<LetPatternDestructor>(ifExpr->condExpr.get()));
+    auto letPattern = As<ASTKind::LET_PATTERN_DESTRUCTOR>(ifExpr->condExpr.get());
+    ASSERT_EQ(letPattern->patterns.size(), 1);
+    ASSERT_NE(letPattern->patterns[0], nullptr);
+    ASSERT_TRUE(Is<VarPattern>(letPattern->patterns[0].get()) || Is<VarOrEnumPattern>(letPattern->patterns[0].get()));
+    EXPECT_EQ("value", letPattern->patterns[0]->ToString());
+    EXPECT_EQ("let value <- x", letPattern->ToString());
+}
+
+namespace {
+constexpr size_t kTuplePatternElementCount = 2;
+constexpr size_t kCatchTypeCount = 2;
+
+void VerifyTuplePatternRestore()
+{
+    auto tupleExpr = ParseExprFromSrc("match (x) { case (Color.Red, _) => 1 }");
+    ASSERT_NE(tupleExpr, nullptr) << "Failed to parse expr: match (x) { case (Color.Red, _) => 1 }";
+    ASSERT_TRUE(Is<MatchExpr>(tupleExpr.get()));
+    auto tupleMatchExpr = As<ASTKind::MATCH_EXPR>(tupleExpr.get());
+    ASSERT_FALSE(tupleMatchExpr->matchCases.empty());
+    ASSERT_EQ(tupleMatchExpr->matchCases[0]->patterns.size(), 1);
+    ASSERT_TRUE(Is<TuplePattern>(tupleMatchExpr->matchCases[0]->patterns[0].get()));
+    auto tuplePattern = As<ASTKind::TUPLE_PATTERN>(tupleMatchExpr->matchCases[0]->patterns[0].get());
+    ASSERT_EQ(tuplePattern->patterns.size(), kTuplePatternElementCount);
+    ASSERT_NE(tuplePattern->patterns[0], nullptr);
+    ASSERT_NE(tuplePattern->patterns[1], nullptr);
+    ASSERT_TRUE(Is<EnumPattern>(tuplePattern->patterns[0].get()));
+    ASSERT_TRUE(Is<WildcardPattern>(tuplePattern->patterns[1].get()));
+    EXPECT_EQ("Color.Red", tuplePattern->patterns[0]->ToString());
+    EXPECT_EQ("_", tuplePattern->patterns[1]->ToString());
+    EXPECT_EQ("(Color.Red, _)", tuplePattern->ToString());
+}
+
+void VerifyTypePatternRestore()
+{
+    auto typeExpr = ParseExprFromSrc("match (x) { case y: Int64 => 1 }");
+    ASSERT_NE(typeExpr, nullptr) << "Failed to parse expr: match (x) { case y: Int64 => 1 }";
+    ASSERT_TRUE(Is<MatchExpr>(typeExpr.get()));
+    auto typeMatchExpr = As<ASTKind::MATCH_EXPR>(typeExpr.get());
+    ASSERT_FALSE(typeMatchExpr->matchCases.empty());
+    ASSERT_EQ(typeMatchExpr->matchCases[0]->patterns.size(), 1);
+    ASSERT_TRUE(Is<TypePattern>(typeMatchExpr->matchCases[0]->patterns[0].get()));
+    auto typePattern = As<ASTKind::TYPE_PATTERN>(typeMatchExpr->matchCases[0]->patterns[0].get());
+    ASSERT_NE(typePattern->pattern, nullptr);
+    ASSERT_NE(typePattern->type, nullptr);
+    ASSERT_TRUE(Is<VarPattern>(typePattern->pattern.get()));
+    EXPECT_EQ("y", typePattern->pattern->ToString());
+    EXPECT_EQ("Int64", typePattern->type->ToString());
+    EXPECT_EQ("y: Int64", typePattern->ToString());
+}
+
+void VerifyEnumPatternRestore()
+{
+    auto enumExpr = ParseExprFromSrc("match (x) { case Year(y) => 1 }");
+    ASSERT_NE(enumExpr, nullptr) << "Failed to parse expr: match (x) { case Year(y) => 1 }";
+    ASSERT_TRUE(Is<MatchExpr>(enumExpr.get()));
+    auto enumMatchExpr = As<ASTKind::MATCH_EXPR>(enumExpr.get());
+    ASSERT_FALSE(enumMatchExpr->matchCases.empty());
+    ASSERT_EQ(enumMatchExpr->matchCases[0]->patterns.size(), 1);
+    ASSERT_TRUE(Is<EnumPattern>(enumMatchExpr->matchCases[0]->patterns[0].get()));
+    auto enumPattern = As<ASTKind::ENUM_PATTERN>(enumMatchExpr->matchCases[0]->patterns[0].get());
+    ASSERT_NE(enumPattern->constructor, nullptr);
+    ASSERT_EQ(enumPattern->patterns.size(), 1);
+    EXPECT_EQ("Year(y)", enumPattern->ToString());
+}
+
+void VerifyVarOrEnumPatternRestore()
+{
+    auto varOrEnumExpr = ParseExprFromSrc("match (x) { case who => 1 }");
+    ASSERT_NE(varOrEnumExpr, nullptr) << "Failed to parse expr: match (x) { case who => 1 }";
+    ASSERT_TRUE(Is<MatchExpr>(varOrEnumExpr.get()));
+    auto varOrEnumMatchExpr = As<ASTKind::MATCH_EXPR>(varOrEnumExpr.get());
+    ASSERT_FALSE(varOrEnumMatchExpr->matchCases.empty());
+    ASSERT_EQ(varOrEnumMatchExpr->matchCases[0]->patterns.size(), 1);
+    ASSERT_TRUE(Is<VarOrEnumPattern>(varOrEnumMatchExpr->matchCases[0]->patterns[0].get()));
+    auto varOrEnumPattern = As<ASTKind::VAR_OR_ENUM_PATTERN>(varOrEnumMatchExpr->matchCases[0]->patterns[0].get());
+    EXPECT_EQ("who", varOrEnumPattern->ToString());
+}
+
+void VerifyExceptTypePatternRestore()
+{
+    auto tryExpr = ParseExprFromSrc("try {} catch(e: Exception1 | Exception2) {}");
+    ASSERT_NE(tryExpr, nullptr) << "Failed to parse expr: try {} catch(e: Exception1 | Exception2) {}";
+    ASSERT_TRUE(Is<TryExpr>(tryExpr.get()));
+    auto parsedTryExpr = As<ASTKind::TRY_EXPR>(tryExpr.get());
+    ASSERT_EQ(parsedTryExpr->catchPatterns.size(), 1);
+    ASSERT_NE(parsedTryExpr->catchPatterns[0], nullptr);
+    ASSERT_TRUE(Is<ExceptTypePattern>(parsedTryExpr->catchPatterns[0].get()));
+    auto catchPattern = As<ASTKind::EXCEPT_TYPE_PATTERN>(parsedTryExpr->catchPatterns[0].get());
+    ASSERT_NE(catchPattern->pattern, nullptr);
+    ASSERT_TRUE(Is<VarPattern>(catchPattern->pattern.get()));
+    ASSERT_EQ(catchPattern->types.size(), kCatchTypeCount);
+    EXPECT_EQ("e: Exception1 | Exception2", catchPattern->ToString());
+}
+
+void VerifyCommandTypePatternRestore()
+{
+    auto funcDecl = ParseDeclFromSrcExperimental("func f() { try {} handle(effect: Effect1 | Effect2) {} }");
+    ASSERT_NE(funcDecl, nullptr) << "Failed to parse decl: func f() { try {} handle(effect: Effect1 | Effect2) {} }";
+    ASSERT_TRUE(Is<FuncDecl>(funcDecl.get()));
+    auto parsedFuncDecl = As<ASTKind::FUNC_DECL>(funcDecl.get());
+    ASSERT_NE(parsedFuncDecl->funcBody, nullptr);
+    ASSERT_NE(parsedFuncDecl->funcBody->body, nullptr);
+    ASSERT_FALSE(parsedFuncDecl->funcBody->body->body.empty());
+    ASSERT_TRUE(Is<TryExpr>(parsedFuncDecl->funcBody->body->body[0].get()));
+    auto parsedTryExpr = As<ASTKind::TRY_EXPR>(parsedFuncDecl->funcBody->body->body[0].get());
+    ASSERT_EQ(parsedTryExpr->handlers.size(), 1);
+    ASSERT_NE(parsedTryExpr->handlers[0].commandPattern, nullptr);
+    ASSERT_TRUE(Is<CommandTypePattern>(parsedTryExpr->handlers[0].commandPattern.get()));
+    auto commandPattern = As<ASTKind::COMMAND_TYPE_PATTERN>(parsedTryExpr->handlers[0].commandPattern.get());
+    ASSERT_NE(commandPattern->pattern, nullptr);
+    ASSERT_TRUE(Is<VarPattern>(commandPattern->pattern.get()));
+    ASSERT_EQ(commandPattern->types.size(), kCatchTypeCount);
+    EXPECT_EQ("effect: Effect1 | Effect2", commandPattern->ToString());
+}
+} // namespace
+
+TEST(ToStringTest, PatternCompositeRestore)
+{
+    VerifyTuplePatternRestore();
+    VerifyTypePatternRestore();
+    VerifyEnumPatternRestore();
+    VerifyVarOrEnumPatternRestore();
+    VerifyExceptTypePatternRestore();
+    VerifyCommandTypePatternRestore();
 }

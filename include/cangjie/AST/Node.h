@@ -1586,6 +1586,7 @@ struct ConstPattern : Pattern {
     ConstPattern() : Pattern(ASTKind::CONST_PATTERN)
     {
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1601,6 +1602,7 @@ struct WildcardPattern : Pattern {
         this->begin = begin;
         this->end = begin + static_cast<size_t>(Len(TokenKind::WILDCARD));
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1625,6 +1627,7 @@ struct VarPattern : Pattern {
         end = varDecl->end;
         varDecl->parentPattern = this;
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1638,6 +1641,7 @@ struct TuplePattern : Pattern {
     TuplePattern() : Pattern(ASTKind::TUPLE_PATTERN)
     {
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1654,6 +1658,7 @@ struct TypePattern : Pattern {
     TypePattern() : Pattern(ASTKind::TYPE_PATTERN)
     {
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1669,6 +1674,7 @@ struct EnumPattern : Pattern {
     {
     }
     std::string GetIdentifier() const;
+    std::string ToString() const override;
 };
 
 /**
@@ -1683,6 +1689,7 @@ struct VarOrEnumPattern : public Pattern {
     VarOrEnumPattern(const SrcIdentifier& id) : Pattern(ASTKind::VAR_OR_ENUM_PATTERN), identifier{id}
     {
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1697,6 +1704,7 @@ struct ExceptTypePattern : Pattern {
     ExceptTypePattern() : Pattern(ASTKind::EXCEPT_TYPE_PATTERN)
     {
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1711,6 +1719,7 @@ struct CommandTypePattern : Pattern {
     CommandTypePattern() : Pattern(ASTKind::COMMAND_TYPE_PATTERN)
     {
     }
+    std::string ToString() const override;
 };
 
 /**
@@ -1842,6 +1851,7 @@ struct LetPatternDestructor : Expr {
     LetPatternDestructor() : Expr{ASTKind::LET_PATTERN_DESTRUCTOR}
     {
     }
+    std::string ToString() const override;
 };
 
 /**
