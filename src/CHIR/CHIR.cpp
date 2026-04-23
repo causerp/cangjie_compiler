@@ -1375,6 +1375,7 @@ VarInitDepMap ToCHIR::GetVarInitDepMap() const
 
 void ToCHIR::ClearASTResources()
 {
+    Utils::ProfileRecorder recorder("CHIR", "ClearASTResources");
     pkg = nullptr;
     annoFactoryFuncs.clear();
     diagEngine.EmitCategoryDiagnostics(DiagCategory::CHIR);
