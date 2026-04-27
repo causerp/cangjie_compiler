@@ -1140,6 +1140,7 @@ private:
     bool CheckCompileAsExeOptions() const;
     bool CheckPgoOptions() const;
     bool CheckCompileMacro() const;
+    bool CheckAPILevel() const;
     void RefactJobs();
     void RefactAggressiveParallelCompileOption();
     void DisableStaticStdForOhos();
