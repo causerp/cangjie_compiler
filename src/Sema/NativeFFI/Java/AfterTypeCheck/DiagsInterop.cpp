@@ -132,30 +132,6 @@ const std::string& GetOuterDeclKindName(const Decl& outerDecl)
     }
 }
 
-void DiagUsageOfJavaTypes(
-    DiagnosticEngine& diag, const Decl& varDecl, std::vector<Ptr<Decl>>&& javaDecls, Ptr<Decl> nonJavaOuterDecl)
-{
-    if (javaDecls.empty()) {
-        return;
-    }
-
-    auto primaryDiagJavaDecl = javaDecls.back();
-    javaDecls.pop_back();
-
-    auto builder = diag.DiagnoseRefactor(DiagKindRefactor::sema_variable_of_java_type, varDecl, GetVarKindName(varDecl),
-        primaryDiagJavaDecl->identifier);
-
-    for (auto javaDecl : javaDecls) {
-        builder.AddNote("Also uses java interoperability type '" + javaDecl->identifier + "'");
-    }
-
-    if (nonJavaOuterDecl) {
-        builder.AddNote(*nonJavaOuterDecl,
-            "Declared inside non java interoperability " + GetOuterDeclKindName(*nonJavaOuterDecl) + " '" +
-                nonJavaOuterDecl->identifier + "'");
-    }
-}
-
 void DiagJavaTypesAsGenericParam(DiagnosticEngine& diag, const Node& expr, std::vector<Ptr<Decl>>&& javaDecls)
 {
     if (javaDecls.empty()) {
