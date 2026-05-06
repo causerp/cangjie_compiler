@@ -27,12 +27,6 @@
 
 #if defined(__linux__)
 static const int PAGE_SIZE = 4;
-#else
-#ifdef _WIN32
-#ifdef __MINGW64__
-static const int PAGE_SIZE = 4;
-#endif
-#endif
 #endif
 
 static const int DISPLAY_PRECISION = 2;
