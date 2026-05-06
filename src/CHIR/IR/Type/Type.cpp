@@ -857,7 +857,7 @@ Type* CustomType::GetExactParentType(
     return nullptr;
 }
 
-std::vector<VTableSearchRes> CustomType::GetFuncIndexInVTable(
+std::optional<VTableSearchRes> CustomType::GetFuncIndexInVTable(
     const FuncCallType& funcCallType, CHIRBuilder& builder) const
 {
     std::unordered_map<const GenericType*, Type*> replaceTable;
@@ -871,8 +871,8 @@ std::vector<VTableSearchRes> CustomType::GetFuncIndexInVTable(
     }
 
     auto result = GetCustomTypeDef()->GetFuncIndexInVTable(funcCallType, replaceTable, builder);
-    if (!result.empty()) {
-        return result;
+    if (result.has_value()) {
+        return result.value();
     }
 
     for (auto ex : GetCustomTypeDef()->GetExtends()) {
@@ -883,11 +883,11 @@ std::vector<VTableSearchRes> CustomType::GetFuncIndexInVTable(
             CollectGenericReplaceTable(*extendedTyGenericArgs[i], *classInstArgs[i], replaceTable);
         }
         result = ex->GetFuncIndexInVTable(funcCallType, replaceTable, builder);
-        if (!result.empty()) {
-            return result;
+        if (result.has_value()) {
+            return result.value();
         }
     }
-    return result;
+    return std::nullopt;
 }
 
 std::vector<ClassType*> CustomType::CalculateExtendImplementedInterfaceTys(CHIRBuilder& builder,
