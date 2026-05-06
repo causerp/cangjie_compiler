@@ -84,6 +84,7 @@ _remove_cangjie_paths() {
             esac
             case "${item}" in
                 "${CANGJIE_HOME}/"*) ;;
+                "${HOME}/.cjpm/bin") ;;
                 *)
                     new_env_var_value="${new_env_var_value}${new_env_var_value:+:}${item}"
                     ;;
