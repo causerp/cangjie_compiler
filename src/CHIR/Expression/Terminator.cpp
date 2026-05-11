@@ -389,7 +389,7 @@ ClassType* DynamicDispatchWithException::GetInstSrcParentCustomTypeOfMethod(CHIR
             return r.instSrcParentType;
         }
     }
-    CJC_ABORT(); 
+    CJC_ABORT();
     return nullptr;
 }
 

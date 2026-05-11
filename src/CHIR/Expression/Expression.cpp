@@ -819,7 +819,7 @@ ClassType* DynamicDispatch::GetInstSrcParentCustomTypeOfMethod(CHIRBuilder& buil
             return r.instSrcParentType;
         }
     }
-    CJC_ABORT(); 
+    CJC_ABORT();
     return nullptr;
 }
 
