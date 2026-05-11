@@ -103,6 +103,7 @@ private:
     bool CheckSyscap(const AST::Decl& target, const PluginCustomAnnoInfo& scopeAnnoInfo, DiagConfig diagCfg);
     bool CheckCheckingHide(const AST::Decl& target, DiagConfig diagCfg);
     bool CheckNode(Ptr<AST::Node> node, PluginCustomAnnoInfo& scopeAnnoInfo, bool reportDiag = true);
+    void MarkClassLikeMembersAsExternalWeakIfNeeded(AST::Decl& target, const PluginCustomAnnoInfo& scopeAnnoInfo);
     void CheckIfAvailableExpr(AST::IfAvailableExpr& iae, PluginCustomAnnoInfo& scopeAnnoInfo);
     void CheckIfExpr(AST::IfExpr& ife, PluginCustomAnnoInfo& scopeAnnoInfo);
     bool IsAnnoAPILevel(Ptr<AST::Annotation> anno, const AST::Decl& decl);
