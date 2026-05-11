@@ -1383,17 +1383,17 @@ Type* GetInstParentCustomTypeForAweCallee(const ApplyWithException& expr, CHIRBu
     return GetInstParentCustomTyOfCallee(*expr.GetCallee(), expr.GetArgs(), expr.GetThisType(), builder);
 }
 
-std::optional<VTableSearchRes> GetFuncIndexInVTable(
+std::vector<VTableSearchRes> GetFuncIndexInVTable(
     Type& root, const FuncCallType& funcCallType, bool isStatic, CHIRBuilder& builder)
 {
-    std::optional<VTableSearchRes> result;
+    std::vector<VTableSearchRes> result;
     if (auto genericTy = DynamicCast<GenericType*>(&root)) {
         auto& upperBounds = genericTy->GetUpperBounds();
         CJC_ASSERT(!upperBounds.empty());
         for (auto upperBound : upperBounds) {
             ClassType* upperClassType = StaticCast<ClassType*>(StaticCast<RefType*>(upperBound)->GetBaseType());
             result = GetFuncIndexInVTable(*upperClassType, funcCallType, isStatic, builder);
-            if (result.has_value()) {
+            if (!result.empty()) {
                 break;
             }
         }
@@ -1405,7 +1405,7 @@ std::optional<VTableSearchRes> GetFuncIndexInVTable(
         CJC_ASSERT(!extendDefs.empty());
         for (auto ex : extendDefs) {
             result = ex->GetFuncIndexInVTable(funcCallType, isStatic, empty, builder);
-            if (result.has_value()) {
+            if (!result.empty()) {
                 break;
             }
         }
