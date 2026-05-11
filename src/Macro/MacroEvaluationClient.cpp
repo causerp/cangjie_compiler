@@ -500,8 +500,9 @@ void MacroEvaluation::ExecMacroSrv(pid_t pid) const
 {
     // args
     std::vector<char*> cstrings;
+    // For Linux/Mac: The file 'cjc' and the LSPMacroServer are not in the same directory, requiring special handling.
     std::string macSrvPath = FileUtil::JoinPath(
-        FileUtil::GetDirPath(ci->invocation.globalOptions.executablePath), MACRO_SRV_NAME);
+        FileUtil::GetDirPath(ci->invocation.globalOptions.executablePath), "../tools/bin/" + MACRO_SRV_NAME);
     std::string hRead = std::to_string(MacroProcMsger::GetInstance().pipefdP2C[0]);
     std::string hWrite = std::to_string(MacroProcMsger::GetInstance().pipefdC2P[1]);
     std::string enPara = enableParallelMacro ? "1" : "0";
@@ -645,8 +646,9 @@ bool CreateMacroMsgPipe()
 
 std::string GetMacroSrvCmd(bool enableParallelMacro, std::string& cjcPath)
 {
+    // For Windows: The file 'cjc' and the LSPMacroServer are not in the same directory, requiring special handling.
     std::string cmdStr = FileUtil::JoinPath(
-        FileUtil::GetDirPath(cjcPath), MACRO_SRV_NAME + ".exe");
+        FileUtil::GetDirPath(cjcPath), "..\\tools\\bin\\" + MACRO_SRV_NAME + ".exe");
     const size_t buffLen = 20;
     char handlebuffer[buffLen];
     sprintf_s(handlebuffer, buffLen, "%d", MacroProcMsger::GetInstance().hChildRead);
