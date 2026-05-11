@@ -347,7 +347,7 @@ FuncType* DynamicDispatchWithException::GetMethodType() const
     return virMethodCtx.originalFuncType;
 }
 
-VTableSearchRes DynamicDispatchWithException::GetVirtualMethodInfo(CHIRBuilder& builder) const
+std::vector<VTableSearchRes> DynamicDispatchWithException::GetVirtualMethodInfo(CHIRBuilder& builder) const
 {
     auto thisTypeDeref = thisType->StripAllRefs();
     if (thisTypeDeref->IsThis()) {
@@ -360,8 +360,8 @@ VTableSearchRes DynamicDispatchWithException::GetVirtualMethodInfo(CHIRBuilder& 
     auto instFuncType = builder.GetType<FuncType>(instParamTypes, builder.GetUnitTy());
     FuncCallType funcCallType{virMethodCtx.srcCodeIdentifier, instFuncType, instantiatedTypeArgs};
     auto res = GetFuncIndexInVTable(*thisTypeDeref, funcCallType, IsInvokeStaticBase(), builder);
-    CJC_ASSERT(res.has_value());
-    return res.value();
+    CJC_ASSERT(!res.empty());
+    return res;
 }
 
 size_t DynamicDispatchWithException::GetVirtualMethodOffset() const
@@ -382,14 +382,27 @@ ClassType* DynamicDispatchWithException::GetInstSrcParentCustomTypeOfMethod(CHIR
     auto instFuncType = builder.GetType<FuncType>(instParamTypes, builder.GetUnitTy());
     FuncCallType funcCallType{virMethodCtx.srcCodeIdentifier, instFuncType, instantiatedTypeArgs};
     auto res = GetFuncIndexInVTable(*thisTypeDeref, funcCallType, IsInvokeStaticBase(), builder);
-    CJC_ASSERT(res.has_value());
-    return res.value().instSrcParentType;
+    CJC_ASSERT(!res.empty());
+    for (auto& r : res) {
+        if (r.offset == virMethodCtx.offset) {
+            CJC_NULLPTR_CHECK(r.instSrcParentType);
+            return r.instSrcParentType;
+        }
+    }
+    CJC_ABORT();
+    return nullptr;
 }
 
 AttributeInfo DynamicDispatchWithException::GetVirtualMethodAttr(CHIRBuilder& builder) const
 {
-    const auto& r = GetVirtualMethodInfo(builder);
-    return r.attr;
+    for (auto& r : GetVirtualMethodInfo(builder)) {
+        if (r.offset == GetVirtualMethodOffset()) {
+            CJC_NULLPTR_CHECK(r.instSrcParentType);
+            return r.attr;
+        }
+    }
+    CJC_ABORT();
+    return AttributeInfo{};
 }
 
 InvokeWithException::InvokeWithException(
