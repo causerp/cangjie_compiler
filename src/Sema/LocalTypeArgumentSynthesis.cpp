@@ -739,7 +739,7 @@ Ptr<Ty> MeetUpperBounds(TypeManager& tyMgr, Ptr<TyVar> tyVar, const UpperBounds&
     // First calculate meet result with ty without tyVars. If there exists valid result 'tyM',
     // than instantiating 'tysWithTyVar' with the mapping "tyVar -> tyM", and calculate final meet result
     // using substituted tys and 'tyM'.
-    Ptr<Ty> tyM = nullptr;
+    Ptr<Ty> tyM = nullptr; // Must set by 'SetMetType'.
     std::set<Ptr<Ty>> tysWithoutTyVar;
     std::set<Ptr<Ty>> tysWithTyVar;
     // Step 1, classify tys.
@@ -794,7 +794,7 @@ std::optional<TypeSubst> LocalTypeArgumentSynthesis::FindSolution(
                 newInfo = true;
                 thisM.erase(tyVar);
             } else if (tyJ->HasIdealTy() && !tyM->IsNumeric()) {
-                tyMgr.ReplaceIdealTy(&tyJ);
+                tyJ = tyMgr.ReplaceIdealTy(std::move(tyJ));
                 thisSubst.emplace(std::make_pair(tyVar, tyJ));
                 newInfo = true;
                 thisM.erase(tyVar);
@@ -803,7 +803,7 @@ std::optional<TypeSubst> LocalTypeArgumentSynthesis::FindSolution(
                 newInfo = true;
                 thisM.erase(tyVar);
             } else if (tyM->HasIdealTy()) {
-                tyMgr.ReplaceIdealTy(&tyM);
+                tyM = tyMgr.ReplaceIdealTy(std::move(tyM));
                 thisSubst.emplace(std::make_pair(tyVar, tyM));
                 newInfo = true;
                 thisM.erase(tyVar);
@@ -1067,7 +1067,7 @@ TypeSubst LocalTypeArgumentSynthesis::ResetIdealTypesInSubst(TypeSubst& m)
     for (const auto& pair : std::as_const(m)) {
         Ptr<TyVar> tyVar = pair.first;
         Ptr<Ty> instTy = pair.second;
-        tyMgr.ReplaceIdealTy(&instTy);
+        instTy = tyMgr.ReplaceIdealTy(std::move(instTy));
         res.emplace(tyVar, instTy);
     }
     return res;

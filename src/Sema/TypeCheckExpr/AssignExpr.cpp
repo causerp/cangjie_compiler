@@ -323,8 +323,7 @@ Ptr<Ty> TypeChecker::TypeCheckerImpl::SynMultipleAssignExpr(ASTContext& ctx, AST
     if (!Ty::IsTyCorrect(ae.rightExpr->GetTy())) {
         return ae.GetTy();
     }
-    Ptr<Ty> rightTy = ae.rightExpr->GetTy();
-    typeManager.ReplaceIdealTy(&rightTy);
+    Ptr<Ty> rightTy = typeManager.ReplaceIdealTy(ae.rightExpr->GetTy());
     ae.rightExpr->SetTy(rightTy);
     { // Create a scope for DiagSuppressor.
         auto ds = DiagSuppressor(diag);
@@ -352,8 +351,7 @@ Ptr<Ty> TypeChecker::TypeCheckerImpl::SynAssignExpr(ASTContext& ctx, AssignExpr&
     ae.SetTy(TypeManager::GetPrimitiveTy(TypeKind::TYPE_UNIT));
     if (ae.leftValue->astKind == ASTKind::WILDCARD_EXPR) {
         if (Ty::IsTyCorrect(Synthesize({ctx, SynPos::EXPR_ARG}, ae.rightExpr.get()))) {
-            Ptr<Ty> rightTy = ae.rightExpr->GetTy();
-            typeManager.ReplaceIdealTy(&rightTy);
+            Ptr<Ty> rightTy = typeManager.ReplaceIdealTy(ae.rightExpr->GetTy());
             ae.rightExpr->SetTy(rightTy);
         } else {
             ae.SetTy(TypeManager::GetInvalidTy());

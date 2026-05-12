@@ -80,7 +80,7 @@ void StructInheritanceChecker::CheckInstMemberSignatures(
         }
         // Add constructors and private functions again for instantiated member's checking.
         if (IsInstanceConstructor(*member) || member->TestAttr(Attribute::PRIVATE)) {
-            (void)UpdateInheritedMemberIfNeeded(members, MemberSignature(member, member->GetTy(), decl.GetTy()));
+            (void)UpdateInheritedMemberIfNeeded(members, MemberSignature{member, member->GetTy(), decl.GetTy()});
         }
     }
     MemberMap genericTyMembers;
@@ -88,7 +88,7 @@ void StructInheritanceChecker::CheckInstMemberSignatures(
         // Ignore generic member and non-function which will not causing collision after instantiation.
         if (it->second.decl->TestAttr(Attribute::GENERIC) || it->second.decl->astKind != ASTKind::FUNC_DECL) {
             it = members.erase(it);
-        } else if (it->second.GetTy()->HasGeneric()) {
+        } else if (it->second.ty->HasGeneric()) {
             // Move generic ty member to other container.
             genericTyMembers.emplace(it->first, it->second);
             it = members.erase(it);
@@ -108,7 +108,7 @@ void StructInheritanceChecker::CheckInstMemberSignatures(
         }
     };
     for (auto [identifier, memberSig] : std::as_const(genericTyMembers)) {
-        memberSig.SetTy(getAndUpdateCache(memberSig.GetTy()));
+        memberSig.ty = getAndUpdateCache(memberSig.ty);
         memberSig.structTy = getAndUpdateCache(memberSig.structTy);
         auto matches = members.equal_range(identifier);
         for (auto it = matches.first; it != matches.second; ++it) {
@@ -419,8 +419,8 @@ void StructInheritanceChecker::DiagnoseForInstantiatedMember(
     if (instTriggerInfos.empty()) {
         return;
     }
-    auto parentFuncTy = DynamicCast<FuncTy*>(parent.GetTy());
-    auto childFuncTy = DynamicCast<FuncTy*>(child.GetTy());
+    auto parentFuncTy = DynamicCast<FuncTy*>(parent.ty);
+    auto childFuncTy = DynamicCast<FuncTy*>(child.ty);
     bool sameStatus = parent.decl->TestAttr(Attribute::STATIC) == child.decl->TestAttr(Attribute::STATIC);
     bool isConflicted = sameStatus && parentFuncTy && childFuncTy &&
         typeManager.IsFuncParameterTypesIdentical(*parentFuncTy, *childFuncTy);

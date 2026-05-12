@@ -34,7 +34,7 @@ bool StructInheritanceChecker::IsBuiltInOperatorFuncInExtend(
     }
     auto ed = RawStaticCast<const ExtendDecl*>(&structDecl);
     auto fd = RawStaticCast<const FuncDecl*>(member.decl);
-    auto funcTy = RawStaticCast<FuncTy*>(member.GetTy());
+    auto funcTy = RawStaticCast<FuncTy*>(member.ty);
     auto iFuncRetTy = funcTy->retTy;
     const std::vector<Ptr<Ty>>& paramTys = funcTy->paramTys;
     Ptr<Ty> thisTy = ed->extendedType->GetTy();

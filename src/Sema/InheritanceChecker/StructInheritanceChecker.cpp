@@ -232,7 +232,7 @@ bool CompMemberSignatureByPosAndTy(Ptr<const MemberSignature> m1, Ptr<const Memb
     if (m1->decl != m2->decl) {
         return CompNodeByPos(m1->decl, m2->decl);
     }
-    return CompTyByNames(m1->GetTy(), m2->GetTy());
+    return CompTyByNames(m1->ty, m2->ty);
 }
 
 } // namespace
@@ -386,8 +386,8 @@ void StructInheritanceChecker::CheckMembersWithInheritedDecls(const InheritableD
         }
         std::pair<MemberMap::const_iterator, MemberMap::const_iterator> inherited =
             visibleExtendMembers.equal_range(member->identifier);
-        MemberSignature memberSig(
-            member, member->GetTy(), decl.GetTy(), nullptr, GetAllGenericUpperBounds(typeManager, *member));
+        MemberSignature memberSig{
+            member, member->GetTy(), decl.GetTy(), nullptr, GetAllGenericUpperBounds(typeManager, *member)};
         for (auto it = inherited.first; it != inherited.second; ++it) {
             DiagnoseForInheritedMember(it->second, memberSig);
         }
@@ -706,7 +706,7 @@ std::pair<MemberMap, MemberMap> StructInheritanceChecker::GetVisibleExtendMember
             }
             auto memberTy = typeManager.GetInstantiatedTy(edMember->GetTy(), typeMapping);
             auto structTy = typeManager.GetInstantiatedTy(extend->GetTy(), typeMapping);
-            MemberSignature sig(edMember, memberTy, structTy, extend, GetAllGenericUpperBounds(typeManager, *edMember));
+            MemberSignature sig{edMember, memberTy, structTy, extend, GetAllGenericUpperBounds(typeManager, *edMember)};
             (void)UpdateInheritedMemberIfNeeded(extendMap, sig);
         }
     }
@@ -1014,7 +1014,7 @@ void StructInheritanceChecker::DiagnoseForUnimplementedInterfaces(const MemberMa
         for (auto member : unImplementedMembers) {
             std::string identifierName;
             if (unImplementedDecl.count(member->decl) > 1) {
-                identifierName = "'" + member->decl->identifier.Val() + "', of type: " + member->GetTy()->String();
+                identifierName = "'" + member->decl->identifier.Val() + "', of type: " + member->ty->String();
             } else {
                 identifierName = "'" + member->decl->identifier.Val() + "'";
             }
@@ -1308,7 +1308,7 @@ void StructInheritanceChecker::CheckPropertyInheritance(const MemberSignature& p
         return;
     }
 
-    if (parent.GetTy() != child.GetTy() || !parent.inconsistentTypes.empty()) {
+    if (parent.ty != child.GetTy() || !parent.inconsistentTypes.empty()) {
         diag.Diagnose(child, DiagKind::sema_property_override_implement_type_diff);
     }
     auto parentProp = RawStaticCast<PropDecl*>(parentDecl);
@@ -1360,7 +1360,7 @@ bool StructInheritanceChecker::CheckImplementationRelation(
     if (!parentDecl->IsFunc()) {
         return false;
     }
-    auto parentTy = parent.GetTy();
+    auto parentTy = parent.ty;
     auto parentFunc = RawStaticCast<FuncDecl*>(parent.decl);
     auto childFunc = RawStaticCast<const FuncDecl*>(child.decl);
     if (childFunc->TestAttr(Attribute::GENERIC) && parentDecl->TestAttr(Attribute::GENERIC)) {
@@ -1368,7 +1368,7 @@ bool StructInheritanceChecker::CheckImplementationRelation(
         parentTy = typeManager.GetInstantiatedTy(parentTy, typeMapping);
     }
     auto parentFuncTy = DynamicCast<FuncTy*>(parentTy);
-    auto childFuncTy = DynamicCast<FuncTy*>(child.GetTy());
+    auto childFuncTy = DynamicCast<FuncTy*>(child.ty);
     bool sameSignature =
         parentFuncTy && childFuncTy && typeManager.IsFuncParameterTypesIdentical(*parentFuncTy, *childFuncTy);
     if (sameSignature) {

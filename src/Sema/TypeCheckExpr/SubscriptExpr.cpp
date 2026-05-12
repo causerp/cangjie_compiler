@@ -64,10 +64,10 @@ bool TypeChecker::TypeCheckerImpl::ChkSubscriptExpr(ASTContext& ctx, Ptr<Ty> tar
     bool retTyMismatch = Ty::IsTyCorrect(target) && Ty::IsTyCorrect(synTy);
     RecoverToSubscriptExpr(se);
     // Also recover base and index's type.
-    typeManager.ReplaceIdealTy(&baseTy);
+    baseTy = typeManager.ReplaceIdealTy(std::move(baseTy));
     se.baseExpr->SetTy(se.baseExpr->GetTy() ? se.baseExpr->GetTy() : baseTy);
     for (size_t i = 0; i < se.indexExprs.size(); ++i) {
-        typeManager.ReplaceIdealTy(&indexTys[i]);
+        indexTys[i] = typeManager.ReplaceIdealTy(std::move(indexTys[i]));
         se.indexExprs[i]->SetTy(Ty::IsTyCorrect(se.indexExprs[i]->GetTy()) ? se.indexExprs[i]->GetTy() : indexTys[i]);
     }
     if (!ds.HasError() && se.ShouldDiagnose(true)) { // Only report subscript diagnoses if no error has beed reported.

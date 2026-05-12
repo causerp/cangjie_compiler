@@ -233,7 +233,7 @@ OwnedPtr<Expr> CreateJavaRefCall(OwnedPtr<Expr> expr, FuncDecl& javaRefGetter)
 
     CJC_ASSERT(expr->GetTy()->IsClassLike());
     CJC_ASSERT(StaticCast<ClassLikeTy*>(expr->GetTy())
-            ->commonDecl->TestAnyAttr(Attribute::JAVA_MIRROR, Attribute::JAVA_MIRROR_SUBTYPE));
+        ->commonDecl->TestAnyAttr(Attribute::JAVA_MIRROR, Attribute::JAVA_MIRROR_SUBTYPE));
     auto curFile = expr->curFile;
     CJC_NULLPTR_CHECK(curFile);
 
