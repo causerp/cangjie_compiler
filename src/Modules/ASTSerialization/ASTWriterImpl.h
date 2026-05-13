@@ -35,7 +35,7 @@ struct DeclInfo {
     TPosition identifierPos;
     flatbuffers::Offset<flatbuffers::Vector<AST::AttrSizeType>> attributes;
     bool isConst = false;
-    FormattedIndex serializedTypeIdx;
+    FormattedIndex ty;
     bool isTopLevel;
     flatbuffers::Offset<flatbuffers::Vector<TAnnoOffset>> annotations;
     flatbuffers::Offset<flatbuffers::Vector<TFullIdOffset>> dependencies;
@@ -44,7 +44,7 @@ struct DeclInfo {
 struct NodeInfo {
     TPosition begin;
     TPosition end;
-    FormattedIndex serializedTypeIdx;
+    FormattedIndex ty;
     Ptr<AST::Expr> mapExpr = nullptr;
     OverflowStrategy ov{OverflowStrategy::NA};
 };

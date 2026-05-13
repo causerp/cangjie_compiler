@@ -29,7 +29,6 @@ ParserImpl::ExprHandler ParserImpl::LookupExprHandler(TokenKind kind)
     static constexpr int LAST_KIND = static_cast<int>(TokenKind::RESUME);
     static constexpr int ARRAY_SIZE = LAST_KIND - FIRST_KIND + 1;
 
-    SUPPRESS_WARNING("-Wcast-function-type-mismatch")
     // clang-format off
 SUPPRESS_WARNING("-Wcast-function-type-mismatch")
     static const ExprHandler HANDLERS[ARRAY_SIZE] = {

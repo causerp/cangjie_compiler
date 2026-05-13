@@ -118,8 +118,7 @@ bool TypeChecker::TypeCheckerImpl::ReplaceIdealTy(Node& node)
     if (!Ty::IsTyCorrect(node.GetTy())) {
         return false;
     }
-    Ptr<Ty> idealTy = node.GetTy();
-    typeManager.ReplaceIdealTy(&idealTy);
+    Ptr<Ty> idealTy = typeManager.ReplaceIdealTy(node.GetTy());
     node.SetTy(idealTy);
     if (node.astKind == ASTKind::LIT_CONST_EXPR) {
         return ChkLitConstExprRange(*StaticAs<ASTKind::LIT_CONST_EXPR>(&node));

@@ -172,7 +172,7 @@ bool TypeChecker::TypeCheckerImpl::ChkUnaryExpr(ASTContext& ctx, Ty& target, Una
     RecoverToUnaryExpr(ue);
     ctx.DeleteDesugarExpr(ue.desugarExpr);
     // Report errors.
-    typeManager.ReplaceIdealTy(&retTy);
+    retTy = typeManager.ReplaceIdealTy(std::move(retTy));
     bool retTyMismatch = isWellTyped || (Ty::IsTyCorrect(&target) && Ty::IsTyCorrect(synTy));
     if (retTyMismatch) {
         DiagMismatchedTypesWithFoundTy(diag, ue, target, isWellTyped ? *retTy : *synTy);

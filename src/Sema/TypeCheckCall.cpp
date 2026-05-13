@@ -1406,8 +1406,7 @@ void TypeChecker::TypeCheckerImpl::ReplaceIdealTypeInSubstPack(SubstPack& maps)
         auto tys0 = tys;
         tys.clear();
         for (auto& ty0 : tys0) { // std::set always has const iterator, can't replace in-place
-            Ptr<Ty> ty1 = ty0;
-            typeManager.ReplaceIdealTy(&ty1);
+            Ptr<Ty> ty1 = typeManager.ReplaceIdealTy(ty0);
             tys.insert(ty1);
         }
     }

@@ -192,7 +192,7 @@ public:
     void GenerateGenericMapping(SubstPack& m, AST::Ty& baseType);
     TypeSubst GenerateGenericMappingFromGeneric(const AST::Decl& parentDecl, const AST::Decl& childDecl) const;
     MultiTypeSubst GenerateStructDeclTypeMapping(const AST::Decl& decl);
-    void ReplaceIdealTy(Ptr<AST::Ty>* ty);
+    Ptr<AST::Ty> ReplaceIdealTy(Ptr<AST::Ty> ty);
     void RestoreJavaGenericsTy(AST::Decl& decl) const;
 
     /**

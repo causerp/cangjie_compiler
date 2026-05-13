@@ -1199,30 +1199,28 @@ TypeCompatibility TypeManager::CheckTypeCompatibility(
         : TypeCompatibility::INCOMPATIBLE;
 }
 
-void TypeManager::ReplaceIdealTy(Ptr<Ty>* ty)
+Ptr<Ty> TypeManager::ReplaceIdealTy(Ptr<Ty> ty)
 {
-    if (!ty || !Ty::IsTyCorrect(*ty)) {
-        return;
+    if (!Ty::IsTyCorrect(ty)) {
+        return ty;
     }
-    switch ((*ty)->kind) {
+    switch (ty->kind) {
         case TypeKind::TYPE_IDEAL_INT:
-            *ty = GetPrimitiveTy(TypeKind::TYPE_INT64);
-            break;
+            return GetPrimitiveTy(TypeKind::TYPE_INT64);
         case TypeKind::TYPE_IDEAL_FLOAT:
-            *ty = GetPrimitiveTy(TypeKind::TYPE_FLOAT64);
-            break;
+            return GetPrimitiveTy(TypeKind::TYPE_FLOAT64);
         case TypeKind::TYPE_CLASS:
         case TypeKind::TYPE_INTERFACE:
         case TypeKind::TYPE_ENUM:
         case TypeKind::TYPE_ARRAY:
         case TypeKind::TYPE_POINTER:
         case TypeKind::TYPE_TUPLE:
-            for (auto& typeArg : (*ty)->typeArgs) {
-                ReplaceIdealTy(&typeArg);
+            for (auto& typeArg : ty->typeArgs) {
+                typeArg = ReplaceIdealTy(std::move(typeArg));
             }
-            break;
+            return ty;
         default:
-            break;
+            return ty;
     }
 }
 

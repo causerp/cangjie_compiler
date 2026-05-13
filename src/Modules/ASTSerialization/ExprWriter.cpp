@@ -24,7 +24,7 @@ void ASTWriter::ASTWriterImpl::SaveBasicNodeInfo(PackageFormat::ExprBuilder& dbu
 {
     dbuilder.add_begin(&info.begin);
     dbuilder.add_end(&info.end);
-    dbuilder.add_type(info.serializedTypeIdx);
+    dbuilder.add_type(info.ty);
     FormattedIndex mapIndx = info.mapExpr ? GetExprIndex(*info.mapExpr) : INVALID_FORMAT_INDEX;
     dbuilder.add_mapExpr(mapIndx);
     dbuilder.add_overflowPolicy(STRATEGY_MAP.at(info.ov));
@@ -726,7 +726,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveConstPattern(const ConstPattern& cp
         exprs.emplace_back(SaveExpr(*cp.operatorCallExpr));
     }
     auto info = PackNodeInfo(cp);
-    auto tyIdx = builder.CreateVector<FormattedIndex>({info.serializedTypeIdx});
+    auto tyIdx = builder.CreateVector<FormattedIndex>({info.ty});
     auto exprsIdx = builder.CreateVector<FormattedIndex>(exprs);
     PackageFormat::PatternBuilder dbuilder(builder);
     dbuilder.add_kind(PackageFormat::PatternKind_ConstPattern);
@@ -740,7 +740,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveConstPattern(const ConstPattern& cp
 TPatternOffset ASTWriter::ASTWriterImpl::SaveWildcardPattern(const WildcardPattern& wp)
 {
     auto info = PackNodeInfo(wp);
-    auto tyIdx = builder.CreateVector<FormattedIndex>({info.serializedTypeIdx});
+    auto tyIdx = builder.CreateVector<FormattedIndex>({info.ty});
     PackageFormat::PatternBuilder dbuilder(builder);
     dbuilder.add_kind(PackageFormat::PatternKind_WildcardPattern);
     dbuilder.add_begin(&info.begin);
@@ -754,7 +754,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveVarPattern(const VarPattern& vp)
     CJC_NULLPTR_CHECK(vp.varDecl);
     auto declIdx = SaveDecl(*vp.varDecl);
     auto info = PackNodeInfo(vp);
-    auto tyIdx = builder.CreateVector<FormattedIndex>({info.serializedTypeIdx});
+    auto tyIdx = builder.CreateVector<FormattedIndex>({info.ty});
     auto exprsIdx = builder.CreateVector<FormattedIndex>({declIdx});
     PackageFormat::PatternBuilder dbuilder(builder);
     dbuilder.add_kind(PackageFormat::PatternKind_VarPattern);
@@ -772,7 +772,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveTuplePattern(const TuplePattern& tp
         patterns[i] = SavePattern(*tp.patterns[i]);
     }
     auto info = PackNodeInfo(tp);
-    auto tyIdx = builder.CreateVector<FormattedIndex>({info.serializedTypeIdx});
+    auto tyIdx = builder.CreateVector<FormattedIndex>({info.ty});
     auto patternsIdx = builder.CreateVector<TPatternOffset>(patterns);
     PackageFormat::PatternBuilder dbuilder(builder);
     dbuilder.add_kind(PackageFormat::PatternKind_TuplePattern);
@@ -788,7 +788,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveTypePattern(const TypePattern& tp)
     CJC_NULLPTR_CHECK(tp.pattern);
     auto pIdx = SavePattern(*tp.pattern);
     auto info = PackNodeInfo(tp);
-    auto tyIdx = builder.CreateVector<FormattedIndex>({info.serializedTypeIdx});
+    auto tyIdx = builder.CreateVector<FormattedIndex>({info.ty});
     auto patternsIdx = builder.CreateVector<TPatternOffset>({pIdx});
     PackageFormat::PatternBuilder dbuilder(builder);
     dbuilder.add_kind(PackageFormat::PatternKind_TypePattern);
@@ -810,7 +810,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveEnumPattern(const EnumPattern& ep)
         patterns[i] = SavePattern(*ep.patterns[i]);
     }
     auto info = PackNodeInfo(ep);
-    auto tyIdx = builder.CreateVector<FormattedIndex>({info.serializedTypeIdx});
+    auto tyIdx = builder.CreateVector<FormattedIndex>({info.ty});
     auto exprsIdx = builder.CreateVector<FormattedIndex>({ctor});
     auto patternsIdx = builder.CreateVector<TPatternOffset>(patterns);
     PackageFormat::PatternBuilder dbuilder(builder);
@@ -827,7 +827,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveExceptTypePattern(const ExceptTypeP
 {
     auto pIdx = SavePattern(*etp.pattern);
     auto info = PackNodeInfo(etp);
-    std::vector<FormattedIndex> types{info.serializedTypeIdx};
+    std::vector<FormattedIndex> types{info.ty};
     for (auto& type : etp.types) {
         CJC_NULLPTR_CHECK(type);
         types.emplace_back(SaveType(typeManager.ObtainsAliasType(type.get())));
@@ -847,7 +847,7 @@ TPatternOffset ASTWriter::ASTWriterImpl::SaveCommandTypePattern(const CommandTyp
 {
     auto pIdx = SavePattern(*ctp.pattern);
     auto info = PackNodeInfo(ctp);
-    std::vector<FormattedIndex> types{info.serializedTypeIdx};
+    std::vector<FormattedIndex> types{info.ty};
     for (auto& type : ctp.types) {
         CJC_NULLPTR_CHECK(type);
         types.emplace_back(SaveType(typeManager.ObtainsAliasType(type.get())));
