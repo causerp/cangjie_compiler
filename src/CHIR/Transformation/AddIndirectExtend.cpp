@@ -952,14 +952,13 @@ ExtendDef* CreateExtendDecl(
     const std::vector<ClassType*>& interfTys,
     std::vector<std::pair<Type*, Type*>>&& extraConstraintPairs)
 {
-    if (!interfTys.empty()) {
-        if (ExtendAlreadyExistsForTypeAndInterface(classDef, classTy, *interfTys[0], builder)) {
-            return nullptr;
-        }
+    CJC_ASSERT(!interfTys.empty());
+    if (ExtendAlreadyExistsForTypeAndInterface(classDef, classTy, *interfTys[0], builder)) {
+        return nullptr;
     }
     auto newGenTysList = CollectGenericTypesFromTypes(&classTy, interfTys);
     static int extendDeclCounter = 0;
-    ClassDef* interfaceDef = interfTys.empty() ? nullptr : interfTys[0]->GetClassDef();
+    ClassDef* interfaceDef = interfTys[0]->GetClassDef();
     std::string mangledName = BuildExtendId(classDef.GetPackageName(), classDef, *interfaceDef, ++extendDeclCounter);
     auto newExtend = builder.CreateExtend(
         DebugLocation(), mangledName, classDef.GetPackageName(), false, newGenTysList);
