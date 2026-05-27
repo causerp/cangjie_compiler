@@ -1178,19 +1178,24 @@ void AST2CHIR::SetExtendInfo()
         if (extendDef == nullptr) {
             continue;
         }
-        if (auto builtinType = DynamicCast<BuiltinType*>(extendDef->GetExtendedType())) {
-            if (builtinType->IsCPointer()) {
-                builder.GetType<CPointerType>(builder.GetUnitTy())->AddExtend(*extendDef);
-            } else {
-                builtinType->AddExtend(*extendDef);
-            }
+        RegisterExtendToExtendedType(*extendDef);
+    }
+}
+
+void AST2CHIR::RegisterExtendToExtendedType(ExtendDef& extendDef)
+{
+    if (auto builtinType = DynamicCast<BuiltinType*>(extendDef.GetExtendedType())) {
+        if (builtinType->IsCPointer()) {
+            builder.GetType<CPointerType>(builder.GetUnitTy())->AddExtend(extendDef);
         } else {
-            auto customType = StaticCast<CustomType*>(extendDef->GetExtendedType());
-            auto customTypeDef = customType->GetCustomTypeDef();
-            CJC_NULLPTR_CHECK(customTypeDef);
-            CJC_ASSERT(customTypeDef->GetCustomKind() != CustomDefKind::TYPE_EXTEND);
-            customTypeDef->AddExtend(*extendDef);
+            builtinType->AddExtend(extendDef);
         }
+    } else {
+        auto customType = StaticCast<CustomType*>(extendDef.GetExtendedType());
+        auto customTypeDef = customType->GetCustomTypeDef();
+        CJC_NULLPTR_CHECK(customTypeDef);
+        CJC_ASSERT(customTypeDef->GetCustomKind() != CustomDefKind::TYPE_EXTEND);
+        customTypeDef->AddExtend(extendDef);
     }
 }
 
@@ -1210,6 +1215,7 @@ void AST2CHIR::SetVTable()
 
     std::vector<ExtendDef*> newExtendDefs = AddIndirectExtend(*package, builder);
     for (auto def : newExtendDefs) {
+        RegisterExtendToExtendedType(*def);
         if (def->TestAttr(Attribute::SKIP_ANALYSIS)) {
             continue;
         }
