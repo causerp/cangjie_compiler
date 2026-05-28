@@ -332,6 +332,7 @@ private:
     void SetGenericDecls() const;
     void SetVTable();
     void SetExtendInfo();
+    void RegisterExtendToExtendedType(ExtendDef& extendDef);
     void UpdateExtendParent();
 
     Translator CreateTranslator();
