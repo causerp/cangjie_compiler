@@ -315,6 +315,11 @@ bool DriverOptions::CheckStaticOption()
         linkStatic = false;
         Warningln("'--static' option is only effective when compiling executables.");
     }
+    if (linkStaticStd.has_value() && !linkStaticStd.value() && linkStatic) {
+        DiagnosticEngine diag;
+        diag.DiagnoseRefactor(DiagKindRefactor::driver_static_dystd_conflict, DEFAULT_POSITION);
+        return false;
+    }
     return true;
 }
 
