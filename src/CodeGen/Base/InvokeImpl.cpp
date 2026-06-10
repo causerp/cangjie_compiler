@@ -74,6 +74,7 @@ llvm::Value* CodeGen::GenerateInvoke(IRBuilder2& irBuilder, const CHIRInvokeWrap
         if (introType->GetTypeArgs().size() <= 1) {
             auto objTyMeta = GenObjTyMetaForVirtualCall(irBuilder, *introType);
             llvm::cast<llvm::Instruction>(funcPtr)->setMetadata("objType", objTyMeta);
+            irBuilder.GetInsertFunction()->addFnAttr(llvm::Attribute::NoMerge);
         }
     } else {
         auto i8PtrTy = irBuilder.getInt8PtrTy();
@@ -144,6 +145,7 @@ llvm::Value* CodeGen::GenerateInvokeStatic(IRBuilder2& irBuilder, const CHIRInvo
     if (introType->GetTypeArgs().size() <= 1) {
         auto objTyMeta = GenObjTyMetaForVirtualCall(irBuilder, *introType);
         llvm::cast<llvm::Instruction>(funcPtr)->setMetadata("objType", objTyMeta);
+        irBuilder.GetInsertFunction()->addFnAttr(llvm::Attribute::NoMerge);
     }
 
     auto funcType = invokeStatic.GetMethodType();
