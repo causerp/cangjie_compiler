@@ -136,6 +136,7 @@ void SetLTOOptions(SetFuncType setOptionHandler, const DriverOptions& driverOpti
         setOptionHandler("--cangjie-lto");
         setOptionHandler("--module-summary");
         setOptionHandler("--module-hash");
+        setOptionHandler("--preserve-bc-uselistorder=false");
     }
 }
 
