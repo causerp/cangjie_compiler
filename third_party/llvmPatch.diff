@@ -46118,9 +46118,27 @@ index 6b481a374..a5f29a3b7 100644
    Alignment = STI->getTargetLowering()->getMinFunctionAlignment();
  
 diff --git a/llvm/lib/CodeGen/MachineInstr.cpp b/llvm/lib/CodeGen/MachineInstr.cpp
-index e92dec5be..3b5639db3 100644
+index e92dec5be..0d880ae4a 100644
 --- a/llvm/lib/CodeGen/MachineInstr.cpp
 +++ b/llvm/lib/CodeGen/MachineInstr.cpp
+@@ -100,7 +100,7 @@ void MachineInstr::addImplicitDefUseOperands(MachineFunction &MF) {
+ /// the MCInstrDesc.
+ MachineInstr::MachineInstr(MachineFunction &MF, const MCInstrDesc &TID,
+                            DebugLoc DL, bool NoImp)
+-    : MCID(&TID), DbgLoc(std::move(DL)), DebugInstrNum(0) {
++    : MCID(&TID), DbgLoc(std::move(DL)), DebugInstrNum(0), CJStackSize(0) {
+   assert(DbgLoc.hasTrivialDestructor() && "Expected trivial destructor");
+ 
+   // Reserve space for the expected number of operands.
+@@ -119,7 +119,7 @@ MachineInstr::MachineInstr(MachineFunction &MF, const MCInstrDesc &TID,
+ /// uniqueness.
+ MachineInstr::MachineInstr(MachineFunction &MF, const MachineInstr &MI)
+     : MCID(&MI.getDesc()), Info(MI.Info), DbgLoc(MI.getDebugLoc()),
+-      DebugInstrNum(0) {
++      DebugInstrNum(0), CJStackSize(MI.CJStackSize) {
+   assert(DbgLoc.hasTrivialDestructor() && "Expected trivial destructor");
+ 
+   CapOperands = OperandCapacity::get(MI.getNumOperands());
 @@ -212,9 +212,13 @@ void MachineInstr::addOperand(MachineFunction &MF, const MachineOperand &Op) {
    // OpNo now points as the desired insertion point.  Unless this is a variadic
    // instruction, only implicit regs are allowed beyond MCID->getNumOperands().
@@ -58683,10 +58701,10 @@ index 8c77b6937..4e65ed2e2 100644
        F->addParamAttr(ArgNo, Attribute::NoAlias);
 diff --git a/llvm/lib/Transforms/IPO/CJPartialEscapeAnalysis.cpp b/llvm/lib/Transforms/IPO/CJPartialEscapeAnalysis.cpp
 new file mode 100644
-index 000000000..f7924d8aa
+index 000000000..2e48842b9
 --- /dev/null
 +++ b/llvm/lib/Transforms/IPO/CJPartialEscapeAnalysis.cpp
-@@ -0,0 +1,3414 @@
+@@ -0,0 +1,3422 @@
 +//===- CJPartialEscapeAnalysis.cpp - escape analysis for Cangjie ----------===//
 +//
 +// Copyright (c) Huawei Technologies Co., Ltd. 2025. All rights reserved.
@@ -61262,6 +61280,10 @@ index 000000000..f7924d8aa
 +
 +  bool run() {
 +    bool Changed = false;
++    if (GCNew.empty()) {
++      cleanupAnalysisState();
++      return Changed;
++    }
 +    for (Function *Func : SCCFunctions) {
 +      ProcessedFunc = Func;
 +      handleLiveness(Func);
@@ -61297,6 +61319,11 @@ index 000000000..f7924d8aa
 +      }
 +    }
 +
++    cleanupAnalysisState();
++    return Changed;
++  }
++
++  void cleanupAnalysisState() {
 +    for (auto PInfo : AllPtrLocInfo) {
 +      delete PInfo.second;
 +    }
@@ -61305,7 +61332,6 @@ index 000000000..f7924d8aa
 +      delete MemInfo.second;
 +    }
 +    AllMemLocInfo.clear();
-+    return Changed;
 +  }
 +
 +  void walkBBs(BasicBlock *CurBB) {
