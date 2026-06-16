@@ -553,16 +553,30 @@ bool GlobalOptions::CheckLtoOptions() const
     } else if (!osName.empty()) {
         osName[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(osName[0])));
     }
-    if (osType == OSType::DARWIN || osType == OSType::IOS || osType == OSType::WINDOWS) {
+    if (osType == OSType::DARWIN || osType == OSType::WINDOWS) {
         DiagnosticEngine diag;
         diag.DiagnoseRefactor(DiagKindRefactor::driver_target_lto_unsupported, DEFAULT_POSITION, osName);
         return false;
+    }
+    if (!experimentalMode && target.os == OSType::IOS) {
+        Errorln("LTO on iOS is an experimental feature, use '--experimental' to enable it.");
+        return false;
+    }
+    if (emitStaticLibInLTO) {
+        if (outputMode != OutputMode::STATIC_LIB) {
+            Errorln("Option '--lto-staticlib-format=native' requires '--output-type=staticlib'.");
+            return false;
+        }
+        if (target.os != OSType::IOS) {
+            Errorln("Option '--lto-staticlib-format=native' is only supported on iOS platforms.");
+            return false;
+        }
     }
     if (outputMode == OutputMode::OBJ) {
         Errorln("--output-type=obj is not allowed in LTO mode");
         return false;
     }
-    if (outputMode == OutputMode::STATIC_LIB && !bcInputFiles.empty()) {
+    if (outputMode == OutputMode::STATIC_LIB && !bcInputFiles.empty() && !emitStaticLibInLTO) {
         Errorln("The input file cannot be bc files When generating a static library in LTO mode.");
         return false;
     }
@@ -627,9 +641,13 @@ bool GlobalOptions::CheckLTOPkgVisibilityOptions() const
         return false;
     }
 
-    if (IsLTOPkgVisibilityEnabled() && outputMode != OutputMode::SHARED_LIB) {
-        DiagnosticEngine diag;
-        diag.DiagnoseRefactor(DiagKindRefactor::driver_visible_pkgs_only_for_dylib, DEFAULT_POSITION);
+    if (IsLTOPkgVisibilityEnabled()) {
+        bool validForDylib = (outputMode == OutputMode::SHARED_LIB && target.os == OSType::LINUX);
+        bool validForStaticLib = (outputMode == OutputMode::STATIC_LIB && target.IsMacOS());
+        if (!validForDylib && !validForStaticLib) {
+            DiagnosticEngine diag;
+            diag.DiagnoseRefactor(DiagKindRefactor::driver_visible_pkgs_only_for_dylib, DEFAULT_POSITION);
+        }
     }
 
     return true;
@@ -1631,6 +1649,7 @@ std::vector<std::string> GlobalOptions::ToSerialized() const
     result.emplace_back(BoolToSerializedString(enableCoverage));
     result.emplace_back(SanitizerTypeToSerializedString());
     result.emplace_back(BoolToSerializedString(experimentalMode));
+    result.emplace_back(BoolToSerializedString(emitStaticLibInLTO));
     result.emplace_back(OverflowStrategyToSerializedString());
     (void)result.emplace_back(BoolToSerializedString(interpreter));
     (void)result.emplace_back(VectorStrToSerializedString(interpreterSearchPaths, ":"));
