@@ -59004,7 +59004,7 @@ index 8c77b6937..4e65ed2e2 100644
        F->addParamAttr(ArgNo, Attribute::NoAlias);
 diff --git a/llvm/lib/Transforms/IPO/CJPartialEscapeAnalysis.cpp b/llvm/lib/Transforms/IPO/CJPartialEscapeAnalysis.cpp
 new file mode 100644
-index 000000000..2e48842b9
+index 000000000..f238f0691
 --- /dev/null
 +++ b/llvm/lib/Transforms/IPO/CJPartialEscapeAnalysis.cpp
 @@ -0,0 +1,3422 @@
@@ -60440,7 +60440,7 @@ index 000000000..2e48842b9
 +
 +  SmallPtrSet<User *, 8> Visited;
 +
-+  SmallPtrSet<Function *, 8> SCCFunctions;
++  SmallSetVector<Function *, 8> SCCFunctions;
 +
 +  ObjectLocation *HeapLoc = nullptr;
 +
@@ -62357,7 +62357,7 @@ index 000000000..2e48842b9
 +
 +static bool escapeAnalysisImpl(LazyCallGraph::SCC &C, LazyCallGraph &CG,
 +                               CGSCCAnalysisManager &AM,
-+			                   CGSCCUpdateResult &UR) {
++                               CGSCCUpdateResult &UR) {
 +  FunctionAnalysisManager &FAM =
 +      AM.getResult<FunctionAnalysisManagerCGSCCProxy>(C, CG).getManager();
 +  auto LookLoop = [&](Function &F) -> LoopInfo & {
@@ -86554,7 +86554,7 @@ index 2282ef636..639003664 100644
        continue;
      LLVM_DEBUG(dbgs() << "Found that GV '" << GV->getName()
 diff --git a/llvm/lib/Transforms/Scalar/SROA.cpp b/llvm/lib/Transforms/Scalar/SROA.cpp
-index 644c5c82e..9d4df759c 100644
+index 644c5c82e..d1be7f14e 100644
 --- a/llvm/lib/Transforms/Scalar/SROA.cpp
 +++ b/llvm/lib/Transforms/Scalar/SROA.cpp
 @@ -65,6 +65,7 @@
@@ -87185,7 +87185,7 @@ index 644c5c82e..9d4df759c 100644
 +                    Offset - ElementBegin, EndOffset - ElementBegin);
 +        Offset = EndOffset;
 +      } else if (ElementBegin < Offset) {
-+        assert(ElementEnd < EndOffset);
++        assert(ElementEnd <= EndOffset);
 +        getInnerTys(DL, dyn_cast<StructType>(ElementTy), InnerTys,
 +                    Offset - ElementBegin, ElementEnd - ElementBegin);
 +        Offset = ElementEnd;
