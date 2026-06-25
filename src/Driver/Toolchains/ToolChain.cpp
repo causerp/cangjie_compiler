@@ -254,7 +254,24 @@ TempFileInfo ToolChain::GetOutputFileInfo(const std::vector<TempFileInfo>& objFi
         fileKind = driverOptions.outputMode == GlobalOptions::OutputMode::SHARED_LIB ?
             TempFileKind::O_DYLIB : TempFileKind::O_EXE;
     }
-    return TempFileManager::Instance().CreateNewFileInfo(objFiles[0], fileKind);
+    return CreateNewFileInfoWrapper(objFiles, fileKind);
+}
+
+TempFileInfo ToolChain::CreateNewFileInfoWrapper(const std::vector<TempFileInfo>& objFiles, TempFileKind kind) const
+{
+    TempFileInfo optionalInfo;
+    for (const auto& objFile : objFiles) {
+        if (objFile.isFrontendOutput) {
+            optionalInfo = objFile;
+            break;
+        }
+    }
+    if (optionalInfo.fileName.empty() && !objFiles.empty()) {
+        optionalInfo = objFiles[0];
+    } else if (optionalInfo.fileName.empty() && !driverOptions.inputObjs.empty()) {
+        optionalInfo.fileName = FileUtil::GetFileNameWithoutExtension(driverOptions.inputObjs[0]);
+    }
+    return TempFileManager::Instance().CreateNewFileInfo(optionalInfo, kind);
 }
 
 std::string ToolChain::GetArchFolderName(const Triple::ArchType& arch) const
