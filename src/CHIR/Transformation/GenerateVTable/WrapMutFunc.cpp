@@ -104,12 +104,37 @@ std::unordered_map<const GenericType*, Type*> CollectReplaceTableFromAllParents(
     }
     return replaceTable;
 }
+
+std::vector<GenericType*> CreateWrapperFuncGenericParams(FuncBase* rawFunc, const std::string& funcIdentifier,
+    std::unordered_map<const GenericType*, Type*>& replaceTable, CHIRBuilder& builder)
+{
+    std::vector<GenericType*> wrapperGenericParams;
+    auto rawFuncGenericParams = rawFunc->GetGenericTypeParams();
+    wrapperGenericParams.reserve(rawFuncGenericParams.size());
+    for (size_t i = 0; i < rawFuncGenericParams.size(); ++i) {
+        auto srcIdentifier = "fT" + std::to_string(i);
+        auto tyIdentifier = funcIdentifier + '_' + srcIdentifier;
+        auto wrapperGenericParam = builder.GetType<GenericType>(tyIdentifier, srcIdentifier);
+        wrapperGenericParams.emplace_back(wrapperGenericParam);
+        replaceTable[rawFuncGenericParams[i]] = wrapperGenericParam;
+    }
+    for (size_t i = 0; i < wrapperGenericParams.size(); ++i) {
+        std::vector<Type*> newUpperBounds;
+        for (auto ty : rawFuncGenericParams[i]->GetUpperBounds()) {
+            newUpperBounds.emplace_back(ReplaceRawGenericArgType(*ty, replaceTable, builder));
+        }
+        wrapperGenericParams[i]->SetUpperBounds(newUpperBounds);
+    }
+    return wrapperGenericParams;
+}
 } // namespace
 
 void WrapMutFunc::CreateMutFuncWrapper(FuncBase* rawFunc, CustomTypeDef& curDef, ClassType& srcClassTy)
 {
     // create the wrapper func
     auto replaceTable = CollectReplaceTableFromAllParents(curDef, srcClassTy, builder);
+    auto funcIdentifier = CHIRMangling::GenerateVirtualFuncMangleName(rawFunc, curDef, &srcClassTy, false);
+    auto wrapperGenericParams = CreateWrapperFuncGenericParams(rawFunc, funcIdentifier, replaceTable, builder);
 
     auto instFuncTy = StaticCast<FuncType*>(ReplaceRawGenericArgType(*rawFunc->GetFuncType(), replaceTable, builder));
     auto wrapperParamsTy = instFuncTy->GetParamTypes();
@@ -118,15 +143,16 @@ void WrapMutFunc::CreateMutFuncWrapper(FuncBase* rawFunc, CustomTypeDef& curDef,
     auto retTy = instFuncTy->GetReturnType();
     auto wrapperFuncTy = builder.GetType<FuncType>(wrapperParamsTy, retTy);
 
-    auto funcIdentifier = CHIRMangling::GenerateVirtualFuncMangleName(rawFunc, curDef, &srcClassTy, false);
     auto pkgName = curDef.GetPackageName();
 
     bool isImported = curDef.TestAttr(Attribute::IMPORTED);
     FuncBase* funcBase = nullptr;
     if (isImported) {
-        funcBase = builder.CreateImportedVarOrFunc<ImportedFunc>(wrapperFuncTy, funcIdentifier, "", "", pkgName);
+        funcBase = builder.CreateImportedVarOrFunc<ImportedFunc>(
+            wrapperFuncTy, funcIdentifier, "", "", pkgName, wrapperGenericParams);
     } else {
-        funcBase = builder.CreateFunc(INVALID_LOCATION, wrapperFuncTy, funcIdentifier, "", "", pkgName);
+        funcBase = builder.CreateFunc(INVALID_LOCATION, wrapperFuncTy, funcIdentifier, "", "", pkgName,
+            wrapperGenericParams);
     }
     wrapperFuncs.emplace(funcIdentifier, funcBase);
     CJC_NULLPTR_CHECK(funcBase);
@@ -165,8 +191,14 @@ void WrapMutFunc::CreateMutFuncWrapper(FuncBase* rawFunc, CustomTypeDef& curDef,
     }
     args[0] = Cangjie::CHIR::TypeCastOrBoxIfNeeded(*args[0], *firstArgType, builder, *entry, INVALID_LOCATION);
 
+    std::vector<Type*> instArgTypes;
+    instArgTypes.reserve(wrapperGenericParams.size());
+    for (auto wrapperGenericParam : wrapperGenericParams) {
+        instArgTypes.emplace_back(wrapperGenericParam);
+    }
     auto apply = Cangjie::CHIR::CreateAndAppendExpression<Apply>(builder, retTy, rawFunc, FuncCallContext{
         .args = args,
+        .instTypeArgs = instArgTypes,
         .thisType = curDef.GetType()}, entry);
     Cangjie::CHIR::CreateAndAppendExpression<Store>(
         builder, builder.GetUnitTy(), apply->GetResult(), func->GetReturnValue(), entry);
