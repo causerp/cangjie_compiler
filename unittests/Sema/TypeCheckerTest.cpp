@@ -360,3 +360,35 @@ TEST_F(TypeCheckerTest, DISABLED_SpawnTest)
     EXPECT_TRUE(ty1->typeArgs.size() == 1);
     EXPECT_TRUE(ty1->typeArgs[0]->kind == TypeKind::TYPE_INT64);
 }
+
+TEST_F(TypeCheckerTest, VarWithPatternInConstFunctionProducesDiagnostic)
+{
+    std::string code = R"(
+struct S {
+    const S() {}
+    const func f(): Int64 {
+        var (a, b) = (1, 2)
+        return 0
+    }
+}
+
+main(): Int64 {
+    return 0
+}
+)";
+
+    instance->code = code;
+    instance->invocation.globalOptions.implicitPrelude = false;
+    instance->Compile(CompileStage::SEMA);
+
+    auto diagnostics = diag.GetCategoryDiagnostic(DiagCategory::SEMA);
+    bool foundDiagnostic = false;
+    for (auto& diagnostic : diagnostics) {
+        if (diagnostic.rKind == DiagKindRefactor::sema_cannot_define_var_in_const_funciton) {
+            foundDiagnostic = true;
+            EXPECT_FALSE(diagnostic.mainHint.range.HasZero());
+        }
+    }
+    EXPECT_TRUE(foundDiagnostic);
+    EXPECT_EQ(diag.GetErrorCount(), 1);
+}
