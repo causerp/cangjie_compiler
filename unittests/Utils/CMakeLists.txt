@@ -15,7 +15,16 @@ set(BASE_UTIL_SRC
     $<TARGET_OBJECTS:CangjieLex>
 )
 
-add_executable(UtilsTests UtilsTests.cpp)
+add_executable(UtilsTests
+    UtilsTests.cpp
+    FileUtilTests.cpp
+    ProfileRecorderTests.cpp
+    SafePointerTests.cpp
+    SemaphoreTests.cpp
+    StdUtilsTests.cpp
+    TaskQueueTests.cpp)
+# ProfileRecorderTests drives the recorders through their own headers, which are private to src/Utils.
+target_include_directories(UtilsTests PRIVATE ${CMAKE_SOURCE_DIR}/src/Utils)
 if(CANGJIE_CODEGEN_CJNATIVE_BACKEND)
 target_link_libraries(
     UtilsTests
