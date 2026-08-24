@@ -12,12 +12,14 @@
 
 #include "cangjie/Sema/TypeManager.h"
 
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "TypeCheckUtil.h"
 #include "LocalTypeArgumentSynthesis.h"
+#include "OverrideFunctionResolver.h"
+#include "TypeCheckUtil.h"
 
 #include "ExtraScopes.h"
 #include "cangjie/AST/Match.h"
@@ -2002,21 +2004,64 @@ void TypeManager::UpdateTopOverriddenFuncDeclMap(const AST::Decl* src, const AST
     }
 }
 
-Ptr<const AST::FuncDecl> TypeManager::GetTopOverriddenFuncDecl(const AST::FuncDecl* funcDecl) const
+namespace {
+Ptr<const FuncDecl> LookupTopOverriddenFromMap(
+    const std::unordered_map<Ptr<const FuncDecl>, std::vector<Ptr<const FuncDecl>>>& overrideMap,
+    const FuncDecl* funcDecl)
 {
-    const auto& decls = overrideMap.find(funcDecl);
+    const auto decls = overrideMap.find(funcDecl);
     if (decls == overrideMap.end() || decls->second.empty()) {
         return nullptr;
     }
     Ptr<const FuncDecl> ret = decls->second.front();
-    std::set<Ptr<const FuncDecl>> traversed;
-    while ((overrideMap.find(ret) != overrideMap.end()) && !(overrideMap.find(ret)->second.empty())) {
-        if (auto [_, succ] = traversed.emplace(ret); !succ) {
-            return nullptr; // cycle detected
+    std::set<Ptr<const FuncDecl>> traversed{funcDecl};
+    while (true) {
+        auto it = overrideMap.find(ret);
+        if (it == overrideMap.end() || it->second.empty()) {
+            return ret;
         }
-        ret = overrideMap.find(ret)->second.front();
+        if (auto [_, succ] = traversed.emplace(ret); !succ) {
+            // Cycle in overrideMap: keep the farthest parent visited so far.
+            return ret;
+        }
+        ret = it->second.front();
     }
-    return ret;
+}
+} // namespace
+
+Ptr<const AST::FuncDecl> TypeManager::GetTopOverriddenFuncDecl(const AST::FuncDecl* funcDecl)
+{
+    CJC_NULLPTR_CHECK(funcDecl);
+
+    // 1) Walk overrideMap as far as it goes. The map is often incomplete for imported
+    //    decls (e.g. Expr.toTokens → Node.toTokens is recorded, but Node.toTokens →
+    //    ToTokens.toTokens is not), so do not return the map result immediately.
+    Ptr<const FuncDecl> fromMap = LookupTopOverriddenFromMap(overrideMap, funcDecl);
+    if (!fromMap && funcDecl->genericDecl) {
+        fromMap = LookupTopOverriddenFromMap(
+            overrideMap, StaticCast<const FuncDecl*>(funcDecl->genericDecl));
+    }
+
+    // 2) Continue via inheritance from the furthest known ancestor (map result, else
+    //    generic decl, else the input), so we still reach the true top (ToTokens.toTokens).
+    const FuncDecl* seed = fromMap.get();
+    if (!seed) {
+        seed = funcDecl->genericDecl ? StaticCast<const FuncDecl*>(funcDecl->genericDecl) : funcDecl;
+    }
+
+    MemberFuncSet tops;
+    {
+        std::lock_guard<std::mutex> lock(overrideResolverImplMutex);
+        tops = OverrideFunctionResolver(*this).GetTopOverriddenFuncs(*funcDecl->outerDecl->GetTy(), *seed);
+    }
+    if (!tops.empty()) {
+        return *tops.begin();
+    }
+    if (fromMap) {
+        return fromMap;
+    }
+    // Already the top-most function in the override chain.
+    return funcDecl;
 }
 
 Ptr<Decl> TypeManager::GetOverrideDeclInClassLike(
