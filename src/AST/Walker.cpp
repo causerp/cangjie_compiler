@@ -17,6 +17,55 @@
 using namespace Cangjie;
 using namespace Cangjie::AST;
 namespace Cangjie::AST {
+template <class NodeT> Ptr<NodeT> NodeStackT<NodeT>::AutoDesugar(Ptr<NodeT> n)
+{
+    using ExprT = std::conditional_t<std::is_const_v<NodeT>, const Expr, Expr>;
+    auto expr = DynamicCast<ExprT>(n);
+    if (!expr) {
+        return n;
+    }
+    while (expr->desugarExpr) {
+        expr = expr->desugarExpr.get();
+    }
+    return expr;
+}
+
+template <class NodeT>
+Ptr<NodeT> NodeStackT<NodeT>::operator[](size_t i) const
+{
+    return stack[stack.size() - i - 1];
+}
+
+template <class NodeT>
+void NodeStackT<NodeT>::Push(Ptr<NodeT> n)
+{
+    stack.push_back(AutoDesugar(n));
+}
+
+template <class NodeT>
+void NodeStackT<NodeT>::Pop()
+{
+    stack.pop_back();
+}
+
+template <class NodeT>
+Ptr<NodeT> NodeStackT<NodeT>::FindFirstOf(
+    const std::function<bool(Ptr<NodeT>)>& pred, const std::function<bool(Ptr<NodeT>)>& stop) const
+{
+    for (auto it = stack.rbegin(); it != stack.rend(); ++it) {
+        if (pred(*it)) {
+            return *it;
+        }
+        if (stop && stop(*it)) {
+            return nullptr;
+        }
+    }
+    return nullptr;
+}
+
+template struct NodeStackT<Node>;
+template struct NodeStackT<const Node>;
+
 template <class NodeT> std::atomic_uint WalkerT<NodeT>::nextWalkerID = 1;
 template <class NodeT> unsigned WalkerT<NodeT>::GetNextWalkerID()
 {

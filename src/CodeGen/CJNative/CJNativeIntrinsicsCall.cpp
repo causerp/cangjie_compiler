@@ -247,8 +247,8 @@ llvm::Value* IRBuilder2::GetArrayElementAddr(
     return CreateGEP(arrayType, arrPtr, {zero, arrHeadIndex, index}, "arr.idx.get.gep");
 }
 
-void IRBuilder2::CallArrayIntrinsicSet(
-    const CHIR::RawArrayType& arrTy, llvm::Value* array, llvm::Value* index, CGValue& cgVal, bool isChecked)
+void IRBuilder2::CallArrayIntrinsicSet(const CHIR::RawArrayType& arrTy, llvm::Value* array, llvm::Value* index,
+    CGValue& cgVal, bool isChecked, ModalWriteKind writeKind)
 {
     auto elemCGType = CGType::GetOrCreate(cgMod, arrTy.GetElementType());
     auto elemType = elemCGType->GetLLVMType();
@@ -261,7 +261,7 @@ void IRBuilder2::CallArrayIntrinsicSet(
         GetCGContext().SetBasePtr(fieldAddr, array);
         auto fieldAddrCGType =
             CGType::GetOrCreate(cgMod, CGType::GetRefTypeOf(GetCGContext().GetCHIRBuilder(), *arrTy.GetElementType()));
-        CreateStore(cgVal, CGValue(fieldAddr, fieldAddrCGType));
+        CreateStore(cgVal, CGValue(fieldAddr, fieldAddrCGType), nullptr, writeKind);
         return;
     }
 
@@ -285,7 +285,8 @@ void IRBuilder2::CallArrayIntrinsicSet(
         auto size = getInt64(GetLLVMModule()->getDataLayout().getTypeAllocSize(elemType));
         CallGCWriteAgg(elemCGType->GetLayoutType(), {array, elePtr, value, size});
     } else if (elemType == CGType::GetRefType(GetLLVMContext())) {
-        CallGCWrite({value, array, elePtr});
+        CallGCWrite({value, array, elePtr},
+                    arrTy.IsLocalRegion() ? ModalWriteKind::MAYBE_LOCAL : ModalWriteKind::NONE);
     } else {
         CreateStore(value, elePtr);
     }
@@ -1254,20 +1255,11 @@ llvm::Instruction* IRBuilder2::CallIntrinsicAllocaGeneric(const std::vector<llvm
     return inst;
 }
 
-llvm::Instruction* IRBuilder2::CallIntrinsicGCWriteGeneric(const std::vector<llvm::Value*>& parameters)
+llvm::Instruction* IRBuilder2::CallIntrinsicGCWriteGeneric(const std::vector<llvm::Value*>& parameters, bool isLocal)
 {
     CJC_ASSERT(parameters.size() == 4U);
-    llvm::Function* func = llvm::Intrinsic::getDeclaration(cgMod.GetLLVMModule(), llvm::Intrinsic::cj_gcwrite_generic);
-    auto fixedParams = {parameters[0], CreateBitCast(parameters[1], getInt8PtrTy(1U)), parameters[2], parameters[3]};
-    return CreateCall(func, fixedParams);
-}
-
-llvm::Instruction* IRBuilder2::CallIntrinsicMaybeLocalWriteGeneric(
-    const std::vector<llvm::Value*>& parameters)
-{
-    CJC_ASSERT(parameters.size() == 4U);
-    llvm::Function* func = llvm::Intrinsic::getDeclaration(
-        cgMod.GetLLVMModule(), llvm::Intrinsic::cj_maybe_local_write_generic);
+    llvm::Function* func = llvm::Intrinsic::getDeclaration(cgMod.GetLLVMModule(),
+        isLocal ? llvm::Intrinsic::cj_maybe_local_write_generic : llvm::Intrinsic::cj_gcwrite_generic);
     auto fixedParams = {parameters[0], CreateBitCast(parameters[1], getInt8PtrTy(1U)), parameters[2], parameters[3]};
     return CreateCall(func, fixedParams);
 }

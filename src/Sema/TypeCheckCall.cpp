@@ -758,11 +758,18 @@ void FilterNestedCtorCall(
     if (ce.modal.HasLocal()) {
         return;
     }
-    // Skip `ce` itself; the enclosing call is the next CallExpr on the checking stack.
+    // Skip `ce` itself and any outer CallExpr that still has desugarExpr (mid-check sugar left on the stack).
     auto outerCall = DynamicCast<CallExpr>(stack.FindFirstOf([&ce](Ptr<Node> n) {
-        return n != &ce && DynamicCast<CallExpr>(n);
+        auto expr = DynamicCast<Expr>(n);
+        if (!expr || expr->desugarExpr) {
+            return false;
+        }
+        while (expr->desugarExpr) {
+            expr = expr->desugarExpr.get();
+        }
+        return expr != &ce && Is<CallExpr>(expr);
     }));
-    if (!outerCall) {
+    if (!outerCall || ce.desugarExpr) {
         return;
     }
     bool isNestedCall = false;
@@ -774,6 +781,10 @@ void FilterNestedCtorCall(
         }
     } else {
         for (auto& arg : outerCall->args) {
+            if (!arg) {
+                // desugared, skip, this won't be a problem because this is a disambiguator.
+                break;
+            }
             if (arg->expr.get() == &ce) {
                 isNestedCall = true;
             }
@@ -1736,7 +1747,7 @@ void TypeChecker::TypeCheckerImpl::FillTypeArgumentsTy(const FuncDecl& fd, const
 
 // Caller guarantees fmu.fd not null and has function type.
 std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::UpdateFuncGenericType(
-    ASTContext& ctx, FunctionMatchingUnit& fmu, CallExpr& ce)
+    ASTContext& ctx, FunctionMatchingUnit& fmu, CallExpr& ce, ModalTy target)
 {
     auto funcTy = RawStaticCast<FuncTy*>(fmu.fd.DataTy());
     ReplaceIdealTypeInSubstPack(fmu.typeMapping);
@@ -1771,6 +1782,9 @@ std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::UpdateFuncGenericType(
     auto rawTy = GetCallTy(ctx, ce, fmu.fd);
     ce.SetTy(typeManager.ApplySubstPack(rawTy, fmu.typeMapping));
     FillTypeArgumentsTy(fmu.fd, ce, fmu.typeMapping);
+    if (auto ref = ce.baseFunc->GetTarget(); ref && ref->TestAttr(Attribute::ENUM_CONSTRUCTOR)) {
+        ce.SetTy(ce.GetTy().With(target.Mode()));
+    }
     return {&fmu.fd};
 }
 
@@ -1880,7 +1894,7 @@ OwnedPtr<FunctionMatchingUnit> TypeChecker::TypeCheckerImpl::CheckCandidate(
 }
 
 std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::ReorderCallArgument(
-    ASTContext& ctx, FunctionMatchingUnit& fmu, CallExpr& ce)
+    ASTContext& ctx, FunctionMatchingUnit& fmu, CallExpr& ce, ModalTy target)
 {
     std::vector<Ptr<FuncArg>> args;
     auto defaultArgs = std::vector<OwnedPtr<FuncArg>>();
@@ -1913,7 +1927,7 @@ std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::ReorderCallArgument(
     auto funcTy = RawStaticCast<FuncTy*>(fmu.fd.DataTy());
     // When the funcDecl is a generic function, we should do instantiation and assign the real type to callExpr.
     if (IsGenericCall(ctx, ce, fmu.fd)) {
-        return UpdateFuncGenericType(ctx, fmu, ce);
+        return UpdateFuncGenericType(ctx, fmu, ce, target);
     }
 
     // Infer the ideal type, if infer fails, return a nullptr and there is no match function for the callExpr.
@@ -1928,6 +1942,9 @@ std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::ReorderCallArgument(
     }
     ce.baseFunc->SetTy({funcTy, fmu.fd.TyMode()});
     ce.SetTy(GetCallTy(ctx, ce, fmu.fd));
+    if (auto ref = ce.baseFunc->GetTarget(); ref && ref->TestAttr(Attribute::ENUM_CONSTRUCTOR)) {
+        ce.SetTy(ce.GetTy().With(target.Mode()));
+    }
     return {&fmu.fd};
 }
 
@@ -2156,7 +2173,7 @@ std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::CheckFunctionMatch(
     }
     // Infer the arguments' type again, to update ideal type and reference's targets which may overload.
     ReInferCallArgs(ctx, candidate.ce, *matched, target);
-    return ReorderCallArgument(ctx, *matched, candidate.ce);
+    return ReorderCallArgument(ctx, *matched, candidate.ce, target);
 }
 
 void TypeChecker::TypeCheckerImpl::RemoveShadowedFunc(
@@ -2638,13 +2655,13 @@ std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::CheckMatchResult(ASTCon
         return {};
     }
     if (legals[id]->fd.outerDecl && legals[id]->fd.outerDecl->astKind == ASTKind::INTERFACE_DECL) {
-        if (auto ref = DynamicCast<NameReferenceExpr*>(ce.baseFunc.get())) {
+        if (auto ref = DynamicCast<NameReferenceExpr>(ce.baseFunc.get())) {
             ref->matchedParentTy = legals[id]->fd.outerDecl->DataTy();
         }
     }
     // Infer the arguments' type again, to update ideal type and reference's targets which may overload.
     ReInferCallArgs(ctx, ce, *legals[id], target);
-    auto ret = ReorderCallArgument(ctx, *legals[id], ce);
+    auto ret = ReorderCallArgument(ctx, *legals[id], ce, target);
     return ret;
 }
 

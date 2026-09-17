@@ -3610,7 +3610,7 @@ void CHIRChecker::CheckEnumTuple(const Tuple& expr, const Function& topLevelFunc
         return;
     }
     for (size_t i = 1; i < operands.size(); ++i) {
-        if (!TypeIsExpected(*operands[i]->GetType(), *paramTypes[i - 1])) {
+        if (!TypeIsExpected(*operands[i]->GetType()->GetDataType(builder), *paramTypes[i - 1])) {
             auto errMsg = "type mismatched, the " + std::to_string(i - 1) + "-th parameter type is " +
                 paramTypes[i - 1]->ToString() + ", but " + operands[i]->GetIdentifier() + "'s type is " +
                 operands[i]->GetType()->ToString() + " in `" + result->ToString(0) + "`.";
@@ -3826,14 +3826,22 @@ void CHIRChecker::CheckRawArrayLiteralInit(const RawArrayLiteralInit& expr, cons
 
     // 2. the 1st operand must be RawArray&
     auto rawArray = expr.GetRawArray();
-    if (!rawArray->GetType()->IsRef() || !rawArray->GetType()->StripAllRefs()->IsRawArray()) {
+    auto rawArrayTy = rawArray->GetType();
+    if (!rawArrayTy->IsRef() || !rawArrayTy->StripAllRefs()->IsRawArray()) {
         TypeCheckError(expr, *rawArray, "RawArray&", topLevelFunc);
+        return;
     }
 
-    // 3. all elements' type must be equal to RawArray's element type
-    auto rawArrayEleTy = StaticCast<RawArrayType*>(rawArray->GetType()->StripAllRefs())->GetElementType();
+    // 3. each element's data type must match RawArray's element type; modal belongs on RawArray
+    // (e.g. RawArray<Rune> @local!), so Rune @local! is accepted when it is equal or a sub-modal of the array.
+    auto rawArrayRawTy = StaticCast<RawArrayType*>(rawArrayTy->StripAllRefs());
+    auto rawArrayEleTy = rawArrayRawTy->GetElementType();
+    auto rawArrayModal = rawArrayRawTy->GetModalInfo();
     for (auto e : expr.GetElementValues()) {
-        if (!e->GetType()->IsEqualOrSubTypeOf(*rawArrayEleTy, builder)) {
+        auto elemTy = e->GetType();
+        auto elemModal = elemTy->StripAllRefs()->GetModalInfo();
+        if (!elemTy->GetDataType(builder)->IsEqualOrSubTypeOf(*rawArrayEleTy, builder) ||
+            !elemModal.IsEqualOrSubModal(rawArrayModal)) {
             TypeCheckError(expr, *e, rawArrayEleTy->ToString(), topLevelFunc);
         }
     }
