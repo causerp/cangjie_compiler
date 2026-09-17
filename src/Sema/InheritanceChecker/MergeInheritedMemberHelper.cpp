@@ -120,6 +120,9 @@ bool StructInheritanceChecker::ComputeInconsistentTypes(const MemberSignature& c
 void StructInheritanceChecker::ComputeInconsistentPropTypes(const MemberSignature& child, const MemberSignature& parent,
     std::vector<ModalTy>& inconsistentTypes) const
 {
+    if (parent.thisMode != child.thisMode) {
+        return;
+    }
     auto parentTy = parent.ty;
     auto childTy = child.ty;
     if (!Ty::IsTyCorrect(parentTy) || !Ty::IsTyCorrect(childTy)) {

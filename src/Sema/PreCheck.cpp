@@ -1793,13 +1793,21 @@ void TypeChecker::TypeCheckerImpl::CheckPropRedefinition(std::vector<PropDecl*>&
         if (pd->type) {
             return pd->type->modal.ToModalInfo();
         }
-        return {};
+        return pd->TyMode();
     };
     auto getDataTy = [](const PropDecl* pd) -> DataTy {
         if (pd->type && pd->type->GetTy().IsCorrect()) {
             return pd->type->DataTy();
         }
+        if (pd->GetTy().IsCorrect()) {
+            return pd->DataTy();
+        }
         return nullptr;
+    };
+    auto isCjmpCommonSpecificPair = [](const PropDecl& a, const PropDecl& b) {
+        bool oneFromCommon = a.TestAttr(Attribute::FROM_COMMON_PART) != b.TestAttr(Attribute::FROM_COMMON_PART);
+        return oneFromCommon && ((a.TestAttr(Attribute::COMMON) && b.TestAttr(Attribute::SPECIFIC)) ||
+            (a.TestAttr(Attribute::SPECIFIC) && b.TestAttr(Attribute::COMMON)));
     };
     // Spec rules for same-name same-scope props:
     //  - different data type  => sema_prop_redefinition (overload must share data type)
@@ -1829,17 +1837,30 @@ void TypeChecker::TypeCheckerImpl::CheckPropRedefinition(std::vector<PropDecl*>&
         // so subsequent same-modal duplicates are reported against the earliest declaration.
         auto& prev = propForModal[ToIndex(getModal(cur))];
         if (prev) {
-            DiagRedefinitionWithFoundNode(diag, *cur, *prev);
+            if (!isCjmpCommonSpecificPair(*cur, *prev)) {
+                DiagRedefinitionWithFoundNode(diag, *cur, *prev);
+            }
         } else {
             prev = cur;
         }
     }
     // Static props cannot be overloaded by any other same-name prop (regardless of signature).
     for (int i{0}; i < MODAL_INFO_COUNT; ++i) {
-        if (propForModal[i] && propForModal[i]->TestAttr(Attribute::STATIC) &&
-            !propForModal[i]->TestAttr(Attribute::HAS_BROKEN)) {
-            diag.DiagnoseRefactor(DiagKindRefactor::sema_static_prop_overload, *propForModal[i]);
-            propForModal[i]->EnableAttr(Attribute::IS_BROKEN);
+        auto sp = propForModal[i];
+        if (!sp || !sp->TestAttr(Attribute::STATIC) || sp->TestAttr(Attribute::HAS_BROKEN)) {
+            continue;
+        }
+        bool overloaded = false;
+        for (auto p : props) {
+            if (p == sp || isCjmpCommonSpecificPair(*p, *sp)) {
+                continue;
+            }
+            overloaded = true;
+            break;
+        }
+        if (overloaded) {
+            diag.DiagnoseRefactor(DiagKindRefactor::sema_static_prop_overload, *sp);
+            sp->EnableAttr(Attribute::IS_BROKEN);
         }
     }
 }

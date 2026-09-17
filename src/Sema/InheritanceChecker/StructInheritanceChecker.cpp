@@ -1413,9 +1413,7 @@ bool StructInheritanceChecker::CheckReturnOverrideByGeneric(const FuncTy& parent
 
 bool StructInheritanceChecker::CheckPropImplRelation(const MemberSignature& parent, const MemberSignature& child) const
 {
-    auto parentTy = parent.ty;
-    auto ch = child.ty;
-    return typeManager.IsTyEqual(parentTy, ch) && parent.thisMode == child.thisMode;
+    return typeManager.IsTyEqual(parent.ty, child.ty) && parent.thisMode == child.thisMode;
 }
 
 bool StructInheritanceChecker::CheckFuncImplRelation(const MemberSignature& parent, const MemberSignature& child) const
