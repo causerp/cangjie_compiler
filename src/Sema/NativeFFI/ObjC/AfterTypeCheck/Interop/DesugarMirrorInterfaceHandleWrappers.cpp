@@ -7,27 +7,20 @@
 /**
  * @file
  *
- * This file implements desugar synthetic mirror interface wrappers.
+ * This file implements desugar mirror interface handle wrappers.
  */
 
 #include "Handlers.h"
-#include "NativeFFI/ObjC/Utils/Common.h"
-#include "NativeFFI/Utils.h"
-#include "cangjie/AST/Create.h"
-#include "cangjie/AST/Match.h"
 #include "cangjie/AST/Node.h"
-#include "cangjie/Utils/CheckUtils.h"
 
 namespace Cangjie::Interop::ObjC {
+
 using namespace Cangjie::AST;
 using namespace Cangjie::Native::FFI;
 
-void DesugarSyntheticWrappers::HandleImpl(InteropContext& ctx)
+void DesugarMirrorInterfaceHandleWrappers::HandleImpl(InteropContext& ctx)
 {
-    for (auto& wrapper : ctx.synWrappers) {
-        if (wrapper->TestAttr(Attribute::IS_BROKEN)) {
-            continue;
-        }
+    for (auto& wrapper : ctx.mirrorInterfaceHandleWrappers) {
         wrapper->DisableAttr(Attribute::ABSTRACT);
     }
 }
