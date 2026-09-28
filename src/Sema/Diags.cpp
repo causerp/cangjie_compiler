@@ -421,11 +421,6 @@ void DiagImmutableAccessMutableFunc(DiagnosticEngine& diag, const MemberAccess& 
 void DiagCannotAssignToImmutable(DiagnosticEngine& diag, const Expr& ae, const Expr& perpetrator)
 {
     auto target = perpetrator.GetTarget();
-    // fix later: immut prop set would diag twice
-    // if disable immut prop set here, set of immut prop call result would not diag
-    // if disable immut prop set at the other place, the results would be strange because that place is in TypeCheck,
-    // but it is PostCheck here. old logic assume prop is always mutable and check later here, but with modal type
-    // prop undergoes overload resolution and must be done in TypeCheck.
     auto builder = diag.DiagnoseRefactor(DiagKindRefactor::sema_cannot_assign_to_immutable, ae);
     if (target != nullptr && !target->identifier.ZeroPos()) {
         builder.AddNote(*target, MakeRange(target->identifier),
