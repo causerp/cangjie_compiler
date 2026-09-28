@@ -399,16 +399,25 @@ void DeclAttributeChecker::CheckPropDeclAttributes(PropDecl& pd) const
             (pd.TestAttr(Attribute::STATIC) && !pd.TestAttr(Attribute::REDEF))) &&
             (pd.setters.empty() || pd.getters.empty())) ||
             (!pd.TestAttr(Attribute::ABSTRACT) && pd.setters.empty() && pd.getters.empty())) {
-            // Aggregate accessors across same-name sibling props: a mut prop may declare only
-            // a getter in one block and the setter in a sibling block.
+            // Aggregate accessors across same-name sibling props with a different modal:
+            // a mut prop may declare only a getter in one modal overload and the setter in another.
+            // Do not borrow accessors from a CJMP common/specific counterpart (those must be complete).
             bool anyGetter = !pd.getters.empty();
             bool anySetter = !pd.setters.empty();
+            auto isCjmpCommonSpecificPair = [](const PropDecl& a, const PropDecl& b) {
+                bool oneFromCommon =
+                    a.TestAttr(Attribute::FROM_COMMON_PART) != b.TestAttr(Attribute::FROM_COMMON_PART);
+                return oneFromCommon &&
+                    ((a.TestAttr(Attribute::COMMON) && b.TestAttr(Attribute::SPECIFIC)) ||
+                        (a.TestAttr(Attribute::SPECIFIC) && b.TestAttr(Attribute::COMMON)));
+            };
             if (pd.outerDecl && pd.outerDecl->IsNominalDecl()) {
                 for (auto& member : pd.outerDecl->GetMemberDecls()) {
                     if (member.get() == &pd) {
                         continue;
                     }
-                    if (auto sib = DynamicCast<PropDecl>(member.get()); sib && sib->identifier == pd.identifier) {
+                    if (auto sib = DynamicCast<PropDecl>(member.get());
+                        sib && sib->identifier == pd.identifier && !isCjmpCommonSpecificPair(pd, *sib)) {
                         anyGetter = anyGetter || !sib->getters.empty();
                         anySetter = anySetter || !sib->setters.empty();
                     }

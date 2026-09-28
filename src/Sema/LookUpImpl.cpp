@@ -14,7 +14,6 @@
 #include "TypeCheckerImpl.h"
 
 #include "cangjie/AST/ScopeManagerApi.h"
-#include "cangjie/AST/Utils.h"
 
 using namespace Cangjie;
 using namespace AST;
@@ -539,12 +538,6 @@ bool IsNodeInTypeAliasDecl(const Node& node, const TypeAliasDecl& tad)
     });
     walker.Walk();
     return found;
-}
-
-bool IsTargetVisibleToNode(const Decl& target, const Node& node)
-{
-    // In the LSP, the 'node' may be a new ast node, 'curFile' pointer consistency cannot be ensured.
-    return !target.TestAttr(Attribute::PRIVATE) || (target.curFile && node.curFile && *target.curFile == *node.curFile);
 }
 } // namespace
 

@@ -367,13 +367,20 @@ void UpdateDeclMap(DiagnosticEngine& diag, ASTContext& ctx, Ptr<ExtendDecl>& ed)
 
         std::string scopeName = ScopeManagerApi::GetScopeNameWithoutTail(sym->scopeName);
         auto names = std::make_pair(sym->name, scopeName);
-        if (sym->astKind == ASTKind::PROP_DECL) { // Function redefinition will not be checked in this phase.
-            if (auto found = ctx.GetDeclsByName(names); !found.empty()) {
+        // Same-modal prop redefinition; different modal is overload. Common/specific pairs match later.
+        if (sym->astKind == ASTKind::PROP_DECL) {
+            auto& curProp = StaticCast<PropDecl>(*sym->node);
+            for (auto foundDecl : ctx.GetDeclsByName(names)) {
+                auto otherProp = DynamicCast<PropDecl>(foundDecl);
+                if (!otherProp || curProp.TyMode() != otherProp->TyMode()) {
+                    continue;
+                }
                 bool multiPlat =
-                    (sym->node->TestAttr(Attribute::COMMON) && found.front()->TestAttr(Attribute::SPECIFIC)) ||
-                    (sym->node->TestAttr(Attribute::SPECIFIC) && found.front()->TestAttr(Attribute::COMMON));
+                    (curProp.TestAttr(Attribute::COMMON) && otherProp->TestAttr(Attribute::SPECIFIC)) ||
+                    (curProp.TestAttr(Attribute::SPECIFIC) && otherProp->TestAttr(Attribute::COMMON));
                 if (!multiPlat) {
-                    Sema::DiagRedefinitionWithFoundNode(diag, StaticCast<Decl>(*sym->node), *found.front());
+                    Sema::DiagRedefinitionWithFoundNode(diag, curProp, *otherProp);
+                    break;
                 }
             }
         }
@@ -966,8 +973,12 @@ bool MPTypeCheckerImpl::MatchCJMPProp(PropDecl& specificProp, PropDecl& commonPr
     if (!IsCJMPDeclMatchable(specificProp, commonProp)) {
         return false;
     }
-    if (!typeManager.IsTyEqual(specificProp.GetTy(), commonProp.GetTy())) {
+    if (specificProp.TyMode() != commonProp.TyMode()) {
+        return false;
+    }
+    if (!typeManager.IsTyEqual(specificProp.DataTy(), commonProp.DataTy())) {
         diag.DiagnoseRefactor(DiagKindRefactor::sema_specific_has_different_type, specificProp, "property");
+        return false;
     }
     bool ret = TrySetSpecificImpl(specificProp, commonProp, "property " + specificProp.identifier);
     if (ret && !specificProp.getters.empty() && !commonProp.getters.empty()) {
