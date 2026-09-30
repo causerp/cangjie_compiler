@@ -239,9 +239,19 @@ bool LocalTypeArgumentSynthesis::UnifyOne(const Tracked<ModalTy>& argTTy, const 
         return true;
     }
     // the mode of placeholder is meaningless
-    if (!argTTy.ty.Mode().IsSubModal(paramTTy.ty.Mode()) && !tyMgr.ImplementsCopyInterface(argTTy.ty.Ty()) &&
-        !paramTTy.ty->IsPlaceholder()) {
+    // An IDEAL modal (pending, awaiting inference) unifies with any concrete modal: the
+    // constraint set records the concrete bound's modal, resolved when the placeholder
+    // is solved (or defaulted to ~local by ReplaceIdealTy if never constrained).
+    if (argTTy.ty.Mode().local != Mode::IDEAL && !argTTy.ty.Mode().IsSubModal(paramTTy.ty.Mode()) &&
+        !tyMgr.ImplementsCopyInterface(argTTy.ty.Ty()) && !paramTTy.ty->IsPlaceholder()) {
         return false;
+    }
+    // Copy fastpath, mirroring the one in IsSubtype: a copy type satisfies the Copyable interface
+    // constraint without going through Promote-based nominal unification (Promote's super-type
+    // walk does not cover compiler-provided interface implementations).
+    if (paramTy.IsInterface() && tyMgr.IsCopyInterfaceTy(&paramTy) &&
+        tyMgr.ImplementsCopyInterface(argTTy.ty.Ty())) {
+        return true;
     }
     // Handle the base case.
     if (cms.size() != 1) {
@@ -271,6 +281,14 @@ bool LocalTypeArgumentSynthesis::UnifyOne(const Tracked<ModalTy>& argTTy, const 
     if ((paramTy.IsGeneric() && StaticCast<TyVar*>(&paramTy)->isPlaceholder) ||
         (argTy.IsGeneric() && StaticCast<TyVar*>(&argTy)->isPlaceholder)) {
         memo.insert(inProcessing);
+        // Preserve the modals when handing off to UnifyTyVar only if one side is IDEAL
+        // (pending, awaiting inference): then the bounds keep the concrete formal's modal
+        // (e.g. @local!) for SolveLamExprParamTys to re-apply. Otherwise keep the legacy
+        // modal-less (NOT) bounds so the recorded constraints behave exactly as before.
+        if (argTTy.ty.Mode().local == Mode::IDEAL || paramTTy.ty.Mode().local == Mode::IDEAL) {
+            return UnifyTyVar({ModalTy{&argTy, argTTy.ty.Mode()}, argTTy.blames},
+                {ModalTy{&paramTy, paramTTy.ty.Mode()}, paramTTy.blames});
+        }
         return UnifyTyVar({{&argTy}, argTTy.blames}, {{&paramTy}, paramTTy.blames});
     }
 
@@ -430,8 +448,11 @@ bool LocalTypeArgumentSynthesis::UnifyTyVarCollectConstraints(
             }
         }
     }
-    // with known sum, but the sum doesn't include eq
-    if (deterministic && !tyMgr.TyVarHasNoSum(tyVar)) {
+    // with known sum, but the sum doesn't include eq.
+    // Skip only on the IsPlaceholderSubtype entry (see skipSumEqCheck): its constraints carry a
+    // dummy pack with an empty tyVarsToSolve and no synchronized sum-set, which would otherwise
+    // produce a spurious false that blocks placeholder <: concrete subtype inference.
+    if (deterministic && !tyMgr.TyVarHasNoSum(tyVar) && !skipSumEqCheck) {
         auto& sum = c[&tyVar].sum;
         auto& eq = c[&tyVar].eq;
         if (!eq.empty() && !eq.begin()->Ty()->IsNothing() && sum.count(*eq.begin()) == 0) {
@@ -1205,13 +1226,15 @@ std::optional<TypeSubst> TypeChecker::TypeCheckerImpl::SolveConstraints(const Co
     return LocalTypeArgumentSynthesis::SolveConstraints(typeManager, cst);
 }
 
-bool LocalTypeArgumentSynthesis::Unify(TypeManager& tyMgr, Constraint& cst, ModalTy argTy, ModalTy paramTy)
+bool LocalTypeArgumentSynthesis::Unify(TypeManager& tyMgr, Constraint& cst, ModalTy argTy, ModalTy paramTy,
+    bool fromPlaceholderSubtype)
 {
     LocTyArgSynArgPack dummyArgPack = {
         {}, {}, {}, {}, ModalTy{TypeManager::GetInvalidTy()}, {TypeManager::GetInvalidTy()}, Blame()};
     auto synIns = LocalTypeArgumentSynthesis(tyMgr, dummyArgPack, {}, false);
     synIns.cms = {{cst}};
     synIns.deterministic = true;
+    synIns.skipSumEqCheck = fromPlaceholderSubtype;
     if (synIns.UnifyOne({argTy, {}}, {paramTy, {}})) {
         CJC_ASSERT(synIns.cms.size() > 0);
         cst = synIns.cms[0].constraint;

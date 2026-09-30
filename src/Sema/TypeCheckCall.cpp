@@ -960,6 +960,81 @@ bool TypeChecker::TypeCheckerImpl::CompareFuncCandidates(
         CompareThisParamTy(typeManager, i.fd, j.fd, ce, target) != OverloadCmp::WORSE;
 }
 
+namespace {
+/// Receiver modal is IDEAL (pending, e.g. an unannotated lambda parameter kept as a placeholder):
+/// every this-mode unifies, so all modal overloads stay legal and resolution becomes ambiguous.
+/// Prefer the @~local (NOT) this-param candidate, mirroring the "prefer @~local for compatibility"
+/// rule used for ctor calls when no mode is determined.
+void FilterIdealReceiverCandidates(
+    TypeManager& typeManager, const std::vector<OwnedPtr<FunctionMatchingUnit>>& candidates,
+    std::vector<bool>& targetMark)
+{
+    bool hasNotMode = false;
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        if (!targetMark[i] || !typeManager.HasThisParam(candidates[i]->fd)) {
+            continue;
+        }
+        if (typeManager.GetThisParamTy(candidates[i]->fd).Mode().local == Mode::NOT) {
+            hasNotMode = true;
+            break;
+        }
+    }
+    if (hasNotMode) {
+        for (size_t i = 0; i < candidates.size(); ++i) {
+            if (!targetMark[i] || !typeManager.HasThisParam(candidates[i]->fd)) {
+                continue;
+            }
+            if (typeManager.GetThisParamTy(candidates[i]->fd).Mode().local != Mode::NOT) {
+                targetMark[i] = false;
+            }
+        }
+    }
+}
+
+/// Result of classifying this-param candidates by modal relation to the receiver.
+struct ThisParamModalClassification {
+    bool hasExact{false};
+    bool hasSubmode{false};
+    bool hasThisParam{false};
+};
+
+/// Scan candidates and classify their this-param modal relation to `argMode`.
+ThisParamModalClassification ClassifyThisParamModals(TypeManager& typeManager, const ModalInfo& argMode,
+    const std::vector<OwnedPtr<FunctionMatchingUnit>>& candidates, const std::vector<bool>& targetMark)
+{
+    ThisParamModalClassification result;
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        if (!targetMark[i] || !typeManager.HasThisParam(candidates[i]->fd)) {
+            continue;
+        }
+        result.hasThisParam = true;
+        auto paramMode = typeManager.GetThisParamTy(candidates[i]->fd).Mode();
+        if (argMode == paramMode) {
+            result.hasExact = true;
+        }
+        if (argMode.IsSubModal(paramMode)) {
+            result.hasSubmode = true;
+        }
+    }
+    return result;
+}
+
+/// Drop candidates whose this-param mode does not match according to hasExact/hasSubmode.
+void FilterNonMatchingThisParamCandidates(TypeManager& typeManager, const ModalInfo& argMode,
+    const std::vector<OwnedPtr<FunctionMatchingUnit>>& candidates, std::vector<bool>& targetMark, bool hasExact)
+{
+    for (size_t i = 0; i < candidates.size(); ++i) {
+        if (!targetMark[i] || !typeManager.HasThisParam(candidates[i]->fd)) {
+            continue;
+        }
+        auto paramMode = typeManager.GetThisParamTy(candidates[i]->fd).Mode();
+        if (hasExact ? argMode != paramMode : !argMode.IsSubModal(paramMode)) {
+            targetMark[i] = false;
+        }
+    }
+}
+} // namespace
+
 /// For non-ctor call, do these in such order.
 /// 1) keep only exact this arg mode to this param.
 /// 2) if candidates still non-empty, keep this arg mode that is submode of this param.
@@ -975,30 +1050,16 @@ void TypeChecker::TypeCheckerImpl::FilterBetterThisModeNonCtorCall(const ASTCont
     auto thisArgTy = GetReceiverTy(ctx, *baseFunc);
     auto argMode = thisArgTy.Mode();
 
-    // Classify this-param candidates by their modal relation to the receiver.
-    bool hasExact{false};
-    bool hasSubmode{false};
-    bool hasThisParam{false};
-    for (size_t i = 0; i < candidates.size(); ++i) {
-        if (!targetMark[i] || !typeManager.HasThisParam(candidates[i]->fd)) {
-            continue;
-        }
-        hasThisParam = true;
-        auto paramMode = typeManager.GetThisParamTy(candidates[i]->fd).Mode();
-        if (argMode == paramMode) {
-            hasExact = true;
-        }
-        if (argMode.IsSubModal(paramMode)) {
-            hasSubmode = true;
-        }
-    }
-    // not instance method call, return
-    if (!hasThisParam) {
+    auto modalClass = ClassifyThisParamModals(typeManager, argMode, candidates, targetMark);
+    if (!modalClass.hasThisParam) {
         return;
     }
-    if (!hasExact && !hasSubmode) {
-        // only consider copy type cast when even sub modes do not match any overload, keep all in this case.
-        // otherwise go through normal filter by this mode
+    if (argMode.local == Mode::IDEAL) {
+        FilterIdealReceiverCandidates(typeManager, candidates, targetMark);
+        return;
+    }
+    if (!modalClass.hasExact && !modalClass.hasSubmode) {
+        // only consider copy type cast when even sub modes do not match any overload, keep all.
         if (typeManager.ImplementsCopyInterface(thisArgTy.Ty())) {
             return;
         }
@@ -1007,16 +1068,7 @@ void TypeChecker::TypeCheckerImpl::FilterBetterThisModeNonCtorCall(const ASTCont
         }
         return;
     }
-
-    for (size_t i = 0; i < candidates.size(); ++i) {
-        if (!targetMark[i] || !typeManager.HasThisParam(candidates[i]->fd)) {
-            continue;
-        }
-        auto paramMode = typeManager.GetThisParamTy(candidates[i]->fd).Mode();
-        if (hasExact ? argMode != paramMode : !argMode.IsSubModal(paramMode)) {
-            targetMark[i] = false;
-        }
-    }
+    FilterNonMatchingThisParamCandidates(typeManager, argMode, candidates, targetMark, modalClass.hasExact);
 }
 
 std::vector<size_t> TypeChecker::TypeCheckerImpl::ResolveOverload(const ASTContext& ctx,
@@ -2473,6 +2525,20 @@ std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::MatchFunctionForCall(
     return filterSum(CheckMatchResult(ctx, ce, legals, illegals, target));
 }
 
+std::vector<Ptr<FuncDecl>> TypeChecker::TypeCheckerImpl::MatchCallCandidates(ASTContext& ctx,
+    std::vector<Ptr<FuncDecl>>& candidates, CallExpr& ce, ModalTy target, SubstPack& typeMapping,
+    bool maybeEnumOrVariadic, std::vector<Diagnostic>& diagnostics)
+{
+    bool suppressDiag = maybeEnumOrVariadic || !typeManager.GetUnsolvedTyVars().empty();
+    if (suppressDiag) {
+        auto ds = DiagSuppressor(diag);
+        auto result = MatchFunctionForCall(ctx, candidates, ce, target, typeMapping);
+        diagnostics = ds.GetSuppressedDiag();
+        return result;
+    }
+    return MatchFunctionForCall(ctx, candidates, ce, target, typeMapping);
+}
+
 void TypeChecker::TypeCheckerImpl::ReInferCallArgs(
     ASTContext& ctx, const CallExpr& ce, const FunctionMatchingUnit& legal, ModalTy target)
 {
@@ -3538,13 +3604,7 @@ bool TypeChecker::TypeCheckerImpl::ChkCallExpr(ASTContext& ctx, ModalTy target, 
     std::vector<Ptr<FuncDecl>> result;
     std::vector<Diagnostic> diagnostics;
     PData::CommitScope cs(typeManager.constraints);
-    if (maybeEnumOrVariadic) {
-        auto ds = DiagSuppressor(diag);
-        result = MatchFunctionForCall(ctx, candidates, ce, target, typeMapping);
-        diagnostics = ds.GetSuppressedDiag();
-    } else {
-        result = MatchFunctionForCall(ctx, candidates, ce, target, typeMapping);
-    }
+    result = MatchCallCandidates(ctx, candidates, ce, target, typeMapping, maybeEnumOrVariadic, diagnostics);
     ce.SetTy(TypeManager::GetNonNullTy(ce.GetTy()));
     if (result.size() == 1) {
         return PostCheckCallExpr(ctx, ce, *result[0], typeMapping);
@@ -3553,13 +3613,20 @@ bool TypeChecker::TypeCheckerImpl::ChkCallExpr(ASTContext& ctx, ModalTy target, 
     // If candidates may be enum constructor or operator(), clear baseFunc's ty when constructor mismatched.
     ce.baseFunc->SetTy(maybeEnumOrVariadic ? ModalTy{TypeManager::GetInvalidTy()} : ce.baseFunc->GetTy());
     auto ret = (maybeEnumOverloadOP && ChkFunctionCallExpr(ctx, target, ce)) ||
-        (maybeVariadicFunction && result.empty() && ChkVariadicCallExpr(ctx, target, ce, candidates, diagnostics));
+        (maybeVariadicFunction && result.empty() &&
+            ChkVariadicCallExpr(ctx, target, ce, candidates, diagnostics));
     if (ret) {
         return true;
     }
     // If no matching or having multiple matching candidates, generate diagnosis.
     if (diagnostics.empty()) {
         DiagnoseForCall(candidates, result, ce, *decl);
+    } else if (!maybeEnumOrVariadic) {
+        // The match ran under suppression (tentative matching while type variables are still
+        // unsolved). Nothing re-reported these diagnostics on this path, so report them here
+        // rather than letting a genuine call error be swallowed. The enum-constructor and
+        // operator() fallbacks above keep the legacy behaviour of not re-reporting.
+        std::for_each(diagnostics.cbegin(), diagnostics.cend(), [this](auto info) { diag.Diagnose(info); });
     }
     // Recover arguments' types if current check failed but previous check passed.
     RecoverCallArgs(ctx, ce, argsTys);
