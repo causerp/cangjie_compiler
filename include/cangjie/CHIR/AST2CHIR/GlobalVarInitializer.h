@@ -17,12 +17,13 @@ using OrderedDecl = std::pair<std::vector<Ptr<AST::File>>, std::vector<Ptr<AST::
 class GlobalVarInitializer {
 public:
     explicit GlobalVarInitializer(Translator& trans, const ImportManager& importManager,
-        std::vector<FuncBase*>& initFuncsForConstVar, bool enableIncre)
+        std::vector<FuncBase*>& initFuncsForConstVar, std::vector<Func*>& initFuncsForAnnoFactory, bool enableIncre)
         : builder(trans.builder),
           globalSymbolTable(trans.globalSymbolTable),
           opts(trans.opts),
           importManager(importManager),
           initFuncsForConstVar(initFuncsForConstVar),
+          initFuncsForAnnoFactory(initFuncsForAnnoFactory),
           trans(trans),
           enableIncre(enableIncre)
     {
@@ -51,6 +52,7 @@ private:
     void FillGVInitFuncWithApplyAndExit(const std::vector<Ptr<Value>>& varInitFuncs);
     void AddImportedPackageInit(const AST::Package& curPackage, const std::string& suffix = "");
     void AddGenericInstantiatedInit();
+    void InsertAnnoFactoryInitsIntoPackageInit(Func& packageInit);
     Ptr<Func> GeneratePackageInitBase(const AST::Package& curPackage, const std::string& suffix = "");
     void InsertAnnotationVarInit(std::vector<Ptr<Value>>& initFuncs) const;
     void CreatePackageLiteralInitFunc(const AST::Package& curPackage,
@@ -66,6 +68,7 @@ private:
     const GlobalOptions& opts;
     const ImportManager& importManager;
     std::vector<FuncBase*>& initFuncsForConstVar;
+    std::vector<Func*>& initFuncsForAnnoFactory;
     Translator& trans;
     bool enableIncre;
 };

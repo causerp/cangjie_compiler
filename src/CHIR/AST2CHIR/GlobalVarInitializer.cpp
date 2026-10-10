@@ -10,6 +10,8 @@
 #include "cangjie/CHIR/Annotation.h"
 #include "cangjie/CHIR/AST2CHIR/Utils.h"
 #include "cangjie/CHIR/CHIRCasting.h"
+#include "cangjie/CHIR/Expression/Expression.h"
+#include "cangjie/CHIR/IntrinsicKind.h"
 #include "cangjie/CHIR/Package.h"
 #include "cangjie/CHIR/Utils.h"
 
@@ -525,6 +527,61 @@ Ptr<Func> GlobalVarInitializer::GeneratePackageInitBase(const AST::Package& curP
     return func;
 }
 
+namespace {
+Ptr<Apply> FindApplyIn(const Block& block, Func& applyCallee)
+{
+    for (auto expression : block.GetExpressions()) {
+        if (auto apply = DynamicCast<Apply>(expression); apply && apply->GetCallee() == &applyCallee) {
+            return apply;
+        }
+    }
+    return nullptr;
+}
+} // namespace
+
+void GlobalVarInitializer::InsertAnnoFactoryInitsIntoPackageInit(Func& packageInit)
+{
+    if (initFuncsForAnnoFactory.empty()) {
+        return;
+    }
+    // Init block is the second successor of the entry block (after once-guard).
+    auto blockWithInitializers = packageInit.GetEntryBlock()->GetSuccessors()[1];
+    trans.SetCurrentBlock(*blockWithInitializers);
+
+    // Place anno inits right after CJ_MRT_PreInitializePackage (exactly one such intrinsic).
+    Expression* insertAfter = nullptr;
+    for (auto expr : blockWithInitializers->GetExpressions()) {
+        if (auto intrinsic = DynamicCast<Intrinsic>(expr);
+            intrinsic && intrinsic->GetIntrinsicKind() == IntrinsicKind::PREINITIALIZE) {
+            insertAfter = expr;
+            break;
+        }
+    }
+    // Without this anchor, Apply would stay at block end (after user gv inits) — silent mis-order / crash at
+    // reflect. Missing PreInitialize is a compiler invariant failure.
+    CJC_NULLPTR_CHECK(insertAfter);
+
+    // insertAfter advances after each call so multiple anno inits keep declaration order
+    // (all after PreInitialize, before later file/gv inits). FindApplyIn avoids a second Apply.
+    for (auto initFunc : initFuncsForAnnoFactory) {
+        auto initCallExpr = FindApplyIn(*blockWithInitializers, *initFunc);
+        if (!initCallExpr) {
+            initCallExpr = StaticCast<Apply*>(trans.GenerateFuncCall(*initFunc,
+                StaticCast<FuncType*>(initFunc->GetType()), std::vector<Type*>{}, nullptr, std::vector<Value*>{},
+                INVALID_LOCATION));
+        }
+        initCallExpr->MoveAfter(insertAfter);
+        insertAfter = initCallExpr;
+    }
+}
+
+/// Generate package initializer. Runtime call order inside package init body:
+/// 1. once-guard: return if already initialized
+/// 2. set once-guard flag
+/// 3. imported packages' init
+/// 4. call runtime CJ_MRT_PreInitializePackage
+/// 5. annotation factory instance inits
+/// 6. current package file / global-var inits
 void GlobalVarInitializer::CreatePackageInitFunc(const AST::Package& curPackage,
     [[maybe_unused]] const std::vector<Ptr<Value>>& importedVarInits, std::vector<Ptr<Value>>& initFuncs)
 {
@@ -535,9 +592,11 @@ void GlobalVarInitializer::CreatePackageInitFunc(const AST::Package& curPackage,
     AddImportedPackageInit(curPackage);
     // 3. add apply of static generic instantiated init
     AddGenericInstantiatedInit();
-    // 4. insert annotation init functions.
+    // 4. insert annotation factory instance inits (after PreInitialize, before file/gv inits).
+    InsertAnnoFactoryInitsIntoPackageInit(*pkgInit);
+    // 5. insert annotation init functions.
     InsertAnnotationVarInit(initFuncs);
-    // 5. add apply of current package init function.
+    // 6. add apply of current package init function.
     FillGVInitFuncWithApplyAndExit(initFuncs);
 }
 
