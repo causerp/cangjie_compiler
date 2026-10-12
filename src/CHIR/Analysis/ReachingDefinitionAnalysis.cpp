@@ -190,10 +190,8 @@ void ReachingDefinitionAnalysis::HandleGetElemRefExpr(ReachingDefinitionDomain& 
     auto target = getElemRef->GetLocation();
     if (auto it = allocateIdxMap.find(target); it != allocateIdxMap.end()) {
         if (StaticCast<RefType*>(target->GetType())->GetBaseType()->IsStruct()) {
-            if (!getElemRef->GetResult()->TestAttr(Attribute::READONLY)) {
-                state.reachingDefs[it->second].SetToBound(/* isTop = */ true);
-                state.reachingLoadDefs[it->second].SetToBound(/* isTop = */ true);
-            }
+            state.reachingDefs[it->second].SetToBound(/* isTop = */ true);
+ 	        state.reachingLoadDefs[it->second].SetToBound(/* isTop = */ true);
         }
     }
 }
