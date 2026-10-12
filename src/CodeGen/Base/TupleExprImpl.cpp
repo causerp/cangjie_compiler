@@ -82,6 +82,7 @@ llvm::Value* CodeGen::GenerateNativeTuple(IRBuilder2& irBuilder, const CHIR::Tup
 #endif
     auto& cgCtx = cgMod.GetCGContext();
     auto res = irBuilder.CreateEntryAlloca(*cgTupleType);
+    auto modalWrite = tupleType->IsLocalRegion() ? ModalWriteKind::MAYBE_LOCAL : ModalWriteKind::NONE;
     auto tupleCGValue =
         CGValue(res, CGType::GetOrCreate(cgMod, CGType::GetRefTypeOf(cgCtx.GetCHIRBuilder(), *tupleType)));
     auto elements = tuple.GetElementValues();
@@ -91,7 +92,7 @@ llvm::Value* CodeGen::GenerateNativeTuple(IRBuilder2& irBuilder, const CHIR::Tup
         if (res->getType()->getPointerAddressSpace() == 1U) {
             cgCtx.SetBasePtr(cgAddr.GetRawValue(), res);
         }
-        irBuilder.CreateStore(cgVal, cgAddr);
+        irBuilder.CreateStore(cgVal, cgAddr, nullptr, modalWrite);
     }
     return res;
 }
