@@ -146,12 +146,14 @@ ModalWriteKind CodeGen::ClassifyModalWrite(CHIRBuilder& builder, const Expressio
     }
 
     auto ownerMode = member.ownerModal.Local();
-    auto valueMode = memberDataType->GetModalInfo().Local();
-    // gcwrite.ref lowers to MCC_WriteRefField, which directly stores when the owner is not a
-    // tracing-heap object. A proven local! -> local! write can therefore reuse that path without
-    // runtime local-object classification. Any local? side still requires dynamic classification.
-    if (valueMode == CHIR::Mode::NONE ||
-        (ownerMode == CHIR::Mode::MUST && valueMode == CHIR::Mode::MUST)) {
+    auto memberMode = memberDataType->GetModalInfo().Local();
+    // gcwrite.ref (MCC_WriteRefField) stores directly for non-heap owners, so a proven
+    // local! -> local! write can take the plain barrier. A generic-related non-ref member
+    // (e.g. field type `T`) has no static layout: the write is dispatched to gcwrite.generic
+    // at runtime, which rejects local objects, so it must keep the maybe-local barrier.
+    bool dispatchedOnRuntimeRefness = !member.memberType->IsRef() && memberDataType->IsGenericRelated();
+    if (memberMode == CHIR::Mode::NONE ||
+        (ownerMode == CHIR::Mode::MUST && memberMode == CHIR::Mode::MUST && !dispatchedOnRuntimeRefness)) {
         return ModalWriteKind::NONE;
     }
     return ModalWriteKind::MAYBE_LOCAL;
