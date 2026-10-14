@@ -197,7 +197,7 @@ bool TypeChecker::TypeCheckerImpl::ChkPattern(
     // External @local! selector infers the pattern modal to @local?
     if (Ty::IsTyCorrect(target) && selector) {
         if (selector->TyMode().local == Mode::FULL && IsExternalLocal(ctx, *selector)) {
-            target = target.With(ModalInfo{Mode::HALF});
+            target = target.With({Mode::HALF});
         }
     }
     switch (p.astKind) {
@@ -391,7 +391,7 @@ bool TypeChecker::TypeCheckerImpl::ChkEnumPattern(ASTContext& ctx, ModalTy targe
         auto enumTy = Is<FuncTy>(p.constructor->DataTy())
             ? p.constructor->GetTy()->typeArgs[1].Ty() : p.constructor->DataTy();
         auto placeholderEnumTy = typeManager.ConstrainByCtor(StaticCast<GenericsTy>(*target), *enumTy);
-        if (placeholderEnumTy) {
+        if (placeholderEnumTy.IsCorrect()) {
             SetTyForEnumPatternConstructor(typeManager, *StaticCast<EnumTy>(placeholderEnumTy.Ty()), p);
             mayMatch = true;
         }
