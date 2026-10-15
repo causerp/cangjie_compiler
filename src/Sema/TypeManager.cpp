@@ -1097,10 +1097,10 @@ bool TypeManager::IsSubtype(
     bool modalSubtyping = false;
     switch (modalMatchMode) {
         case ModalMatchMode::SUBTYPE:
-            modalSubtyping = IsModalSubtype(leaf, root) || ImplementsCopyInterface(leaf.Ty());
+            modalSubtyping = IsModalSubtype(leaf, root) || IsCopyType(leaf.Ty());
             break;
         case ModalMatchMode::EXACT:
-            modalSubtyping = leaf.Mode() == root.Mode() || ImplementsCopyInterface(leaf.Ty());
+            modalSubtyping = leaf.Mode() == root.Mode() || IsCopyType(leaf.Ty());
             break;
         case ModalMatchMode::NON_COPY:
             modalSubtyping = IsModalSubtype(leaf.Mode(), root.Mode());
@@ -1130,7 +1130,7 @@ bool TypeManager::IsSubtype(
         return true;
     }
     /// copy type check fastpath
-    if (IsCopyInterfaceTy(root) && ImplementsCopyInterface(leaf)) {
+    if (IsCopyInterfaceTy(root) && IsCopyType(leaf)) {
         return true;
     }
     if (root->IsNothing()) {
@@ -1190,7 +1190,7 @@ bool TypeManager::IsModalSubtype(ModalTy leaf, ModalTy root)
 {
     // if T <: Copy, then it is possible to cast a T @local? to a T @local! or T@~local
     // also @local! and @~local are subtype of @local?, so all of them can be cast to one another
-    if (ImplementsCopyInterface(leaf.Ty())) {
+    if (IsCopyType(leaf.Ty())) {
         return true;
     }
     // The mode of an unsolved placeholder type variable is meaningless: it has not been bound
@@ -1211,14 +1211,40 @@ bool TypeManager::IsModalSubtype(ModalInfo leaf, ModalInfo root)
     return (l & r) == l;
 }
 
-// Whether @p ty is a copy type for modal/locality checking (spec: such types are not subject to locality
-// constraints). Copy types include.
+namespace {
+// Collect transitive GenericsTy upper bounds. Skip already-seen nodes to tolerate T <: V, V <: T.
+std::unordered_set<DataTy> GetAllUpperBounds(const GenericsTy& gty)
+{
+    std::unordered_set<DataTy> ubs(gty.upperBounds.begin(), gty.upperBounds.end());
+    std::unordered_set<DataTy> newGens;
+    for (auto ty : ubs) {
+        if (ty->IsGeneric()) {
+            newGens.insert(ty);
+        }
+    }
+    while (!newGens.empty()) {
+        std::unordered_set<DataTy> newlyFound;
+        for (auto ty : newGens) {
+            for (auto ub : StaticCast<GenericsTy>(ty)->upperBounds) {
+                if (ub->IsGeneric() && ubs.insert(ub).second) {
+                    newlyFound.insert(ub);
+                }
+            }
+        }
+        newGens = std::move(newlyFound);
+    }
+    return ubs;
+}
+} // namespace
+
+// Whether @p ty is a copy type for modal/locality checking. Copy types include.
 // - CType subtypes (excluding CType itself)
 // - Primitive types: Int*, Float*, Bool, Rune, Nothing, Invalid
 // - Tuple whose elements are all copy types; VArray whose element type is a copy type
 // - Generic type variable with a Copyable upper bound
 // - struct inheriting or extending Copyable
-bool TypeManager::ImplementsCopyInterface(DataTy ty)
+// Note: the Copyable interface type itself is not a copy type.
+bool TypeManager::IsCopyType(DataTy ty)
 {
     if (ty->IsMetCType()) {
         return true;
@@ -1238,21 +1264,17 @@ bool TypeManager::ImplementsCopyInterface(DataTy ty)
     }
     if (auto tuple = DynamicCast<TupleTy>(ty)) {
         return std::all_of(tuple->typeArgs.begin(), tuple->typeArgs.end(),
-            [this](ModalTy m) { return ImplementsCopyInterface(m.Ty()); });
+            [this](ModalTy m) { return IsCopyType(m.Ty()); });
     }
     if (auto g = DynamicCast<GenericsTy>(ty)) {
         if (!g->isUpperBoundLegal) {
             return false;
         }
-        for (auto upper : g->upperBounds) {
-            if (ImplementsCopyInterface(upper)) {
-                return true;
-            }
-        }
-        return false;
+        auto upperBounds = GetAllUpperBounds(*g);
+        return std::any_of(upperBounds.begin(), upperBounds.end(), [this](DataTy ub) { return IsCopyInterfaceTy(ub); });
     }
     if (auto array = DynamicCast<VArrayTy>(ty)) {
-        return ImplementsCopyInterface(array->TyArg(0));
+        return IsCopyType(array->TyArg(0));
     }
     auto decl = Ty::GetDeclOfTy(ty);
     if (auto structDecl = DynamicCast<StructDecl>(decl)) {
@@ -1754,34 +1776,6 @@ bool TypeManager::HasNominalSuperTy(Ty& nominalTy, Ty& superTy, const TypeSubst&
     }
     return false;
 }
-
-namespace {
-// collect all transitive GenericsTy upperbound in addition to gty.upperBounds
-std::unordered_set<DataTy> GetAllUpperBounds(const GenericsTy& gty)
-{
-    std::unordered_set<DataTy> ubs(gty.upperBounds.begin(), gty.upperBounds.end());
-    std::unordered_set<DataTy> newGens;
-    std::unordered_set<DataTy> newUbs;
-    for (auto ty : ubs) {
-        if (ty->IsGeneric()) {
-            newGens.insert(ty);
-        }
-    }
-    while (!newGens.empty()) {
-        for (auto ty : newGens) {
-            for (auto ub : RawStaticCast<GenericsTy*>(ty)->upperBounds) {
-                if (ub->IsGeneric()) {
-                    newUbs.insert(ub);
-                }
-            }
-        }
-        ubs.insert(newUbs.begin(), newUbs.end());
-        newGens = newUbs;
-        newUbs.clear();
-    }
-    return ubs;
-}
-} // namespace
 
 bool TypeManager::HasSuperTy(Ty& ty, Ty& superTy, const TypeSubst& typeMapping, bool withExtended)
 {
