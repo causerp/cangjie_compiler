@@ -2034,10 +2034,6 @@ void TypeManager::AddOverrideCache(const FuncDecl& src, const FuncDecl& target, 
 {
     OverrideOrShadowKey key(&src, &target, baseTy, baseMode, expectInstParent, parentMode);
     overrideOrShadowCache.emplace(key, val);
-    if (val && HasThisParam(src) && HasThisParam(target) && src.outerDecl &&
-        src.outerDecl == Ty::GetDeclPtrOfTy(baseTy)) {
-        UpdateTopOverriddenFuncDeclMap(&src, &target);
-    }
 }
 
 std::set<Ptr<ExtendDecl>> TypeManager::GetDeclExtends(const InheritableDecl& decl)
@@ -2313,72 +2309,10 @@ bool TypeManager::IsFuncDeclEqualType(const FuncDecl& decl, const FuncDecl& func
     return IsFuncDeclSubType(decl, funcDecl) && IsFuncDeclSubType(funcDecl, decl);
 }
 
-void TypeManager::UpdateTopOverriddenFuncDeclMap(const Decl* src, const Decl* target)
-{
-    if (src == target) {
-        return;
-    }
-    if (auto funcDecl = DynamicCast<FuncDecl>(src)) {
-        auto& temp = overrideMap[funcDecl];
-        temp.emplace_back(StaticCast<FuncDecl>(target));
-    } else if (auto propDecl = DynamicCast<PropDecl>(src)) {
-        auto targetPropDecl = StaticCast<PropDecl>(target);
-        if (!propDecl->getters.empty() && !targetPropDecl->getters.empty()) {
-            auto& temp = overrideMap[propDecl->getters.front().get()];
-            temp.emplace_back(targetPropDecl->getters.front().get());
-        }
-        if (!propDecl->setters.empty() && !targetPropDecl->setters.empty()) {
-            auto& temp = overrideMap[propDecl->setters.front().get()];
-            temp.emplace_back(targetPropDecl->setters.front().get());
-        }
-    }
-}
-
-namespace {
-Ptr<const FuncDecl> LookupTopOverriddenFromMap(
-    const std::unordered_map<Ptr<const FuncDecl>, std::vector<Ptr<const FuncDecl>>>& overrideMap,
-    const FuncDecl* funcDecl)
-{
-    const auto decls = overrideMap.find(funcDecl);
-    if (decls == overrideMap.end() || decls->second.empty()) {
-        return nullptr;
-    }
-    Ptr<const FuncDecl> ret = decls->second.front();
-    std::set<Ptr<const FuncDecl>> traversed{funcDecl};
-    while (true) {
-        auto it = overrideMap.find(ret);
-        if (it == overrideMap.end() || it->second.empty()) {
-            return ret;
-        }
-        if (auto [_, succ] = traversed.emplace(ret); !succ) {
-            // Cycle in overrideMap: keep the farthest parent visited so far.
-            return ret;
-        }
-        ret = it->second.front();
-    }
-}
-} // namespace
-
 Ptr<const AST::FuncDecl> TypeManager::GetTopOverriddenFuncDecl(const AST::FuncDecl* funcDecl)
 {
     CJC_NULLPTR_CHECK(funcDecl);
-
-    // 1) Walk overrideMap as far as it goes. The map is often incomplete for imported
-    //    decls (e.g. Expr.toTokens → Node.toTokens is recorded, but Node.toTokens →
-    //    ToTokens.toTokens is not), so do not return the map result immediately.
-    Ptr<const FuncDecl> fromMap = LookupTopOverriddenFromMap(overrideMap, funcDecl);
-    if (!fromMap && funcDecl->genericDecl) {
-        fromMap = LookupTopOverriddenFromMap(
-            overrideMap, StaticCast<const FuncDecl*>(funcDecl->genericDecl));
-    }
-
-    // 2) Continue via inheritance from the furthest known ancestor (map result, else
-    //    generic decl, else the input), so we still reach the true top (ToTokens.toTokens).
-    const FuncDecl* seed = fromMap.get();
-    if (!seed) {
-        seed = funcDecl->genericDecl ? StaticCast<const FuncDecl*>(funcDecl->genericDecl) : funcDecl;
-    }
-
+    auto seed = funcDecl->genericDecl ? StaticCast<const FuncDecl*>(funcDecl->genericDecl) : funcDecl;
     MemberFuncSet tops;
     {
         std::lock_guard<std::mutex> lock(overrideResolverImplMutex);
@@ -2387,10 +2321,6 @@ Ptr<const AST::FuncDecl> TypeManager::GetTopOverriddenFuncDecl(const AST::FuncDe
     if (!tops.empty()) {
         return *tops.begin();
     }
-    if (fromMap) {
-        return fromMap;
-    }
-    // Already the top-most function in the override chain.
     return funcDecl;
 }
 

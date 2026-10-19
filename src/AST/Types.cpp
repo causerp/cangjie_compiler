@@ -1114,6 +1114,7 @@ template <typename T> Ptr<T> Ty::GetDeclOfTy(ModalTy ty)
 /** Get ty's corresponding declaration, always be generic decl if has generic. */
 template Ptr<Decl> Ty::GetDeclPtrOfTy(Ptr<const AST::Ty> ty);
 template Ptr<InheritableDecl> Ty::GetDeclPtrOfTy(Ptr<const AST::Ty> ty);
+template Ptr<ClassLikeDecl> Ty::GetDeclPtrOfTy(Ptr<const AST::Ty> ty);
 template Ptr<Decl> Ty::GetDeclPtrOfTy(Ptr<AST::Ty> ty);
 template Ptr<InheritableDecl> Ty::GetDeclPtrOfTy(Ptr<AST::Ty> ty);
 template <typename T> Ptr<T> Ty::GetDeclPtrOfTy(Ptr<const Ty> ty)
