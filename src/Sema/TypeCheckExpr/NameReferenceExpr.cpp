@@ -60,12 +60,9 @@ bool CheckEnumCtorModal(ModalTy target, Expr& expr)
     // refNode is enum ctor, target ty is the enum with any local, it is good if
     // 1) either refNode's modal is subtype of target's modal (which is checked later)
     // 2) or refNode does not specify modal. in this case, convert refNode's modal to target's modal
-    // the following two if's are both of 2)
-    if (Is<RefExpr>(&expr)) {
+    // Apply to both bare `None` and qualified `Option<T>.None` / `E.ctor`.
+    if (Is<RefExpr>(&expr) || Is<MemberAccess>(&expr)) {
         expr.SetTy(expr.GetTy().With(target.Mode()));
-        return true;
-    } else if (auto ma = DynamicCast<MemberAccess>(&expr); ma && ma->baseExpr && ma->baseExpr->GetTy().IsCorrect()) {
-        expr.SetTy(expr.GetTy().With(ma->baseExpr->TyMode()));
         return true;
     }
     return false;
@@ -436,7 +433,7 @@ void TypeChecker::TypeCheckerImpl::ResolveFunRefOverload(const ASTContext& ctx, 
     if (!hasExact && !hasSubmode) {
         // only consider copy type cast when even sub modes do not match any overload, keep all in this case.
         // otherwise go through normal filter by this mode
-        if (typeManager.ImplementsCopyInterface(thisArgTy.Ty())) {
+        if (typeManager.IsCopyType(thisArgTy.Ty())) {
             return;
         }
         candidates.clear();

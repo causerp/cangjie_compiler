@@ -229,31 +229,52 @@ void TypeChecker::TypeCheckerImpl::PerformDesugarAfterInstantiation([[maybe_unus
 bool AutoBoxing::NeedBoxOption(ModalTy child, ModalTy target)
 {
     if (Ty::IsInitialTy(child.Ty()) || Ty::IsInitialTy(target.Ty()) ||
-        (typeManager.CheckTypeCompatibility(child, target, false, target->IsGeneric()) !=
-            TypeCompatibility::INCOMPATIBLE) ||
         child->kind == TypeKind::TYPE_NOTHING || target->kind != TypeKind::TYPE_ENUM) {
+        return false;
+    }
+    auto enumTy = StaticCast<EnumTy>(target.Ty());
+    if (enumTy->declPtr->fullPackageName != CORE_PACKAGE_NAME || enumTy->declPtr->identifier != STD_LIB_OPTION) {
         return false;
     }
     auto lCnt = CountOptionNestedLevel(child.Ty());
     auto rCnt = CountOptionNestedLevel(target.Ty());
-    // If type contains generic ty, current is node inside @Java class. Otherwise, incompatible types need to be boxed.
-    if (lCnt == rCnt && child->HasGeneric()) {
+    // Already enough Option nesting (e.g. recursive TryOptionBox into typeArgs[0]).
+    if (lCnt > rCnt) {
         return false;
     }
-    auto enumTy = RawStaticCast<EnumTy*>(target.Ty());
-    if (enumTy->declPtr->fullPackageName != CORE_PACKAGE_NAME || enumTy->declPtr->identifier != STD_LIB_OPTION) {
+    // Same nesting with only modal difference: adapt mode, do not wrap another Some.
+    if (lCnt == rCnt &&
+        typeManager.CheckTypeCompatibility(
+            child.With(target.Mode()), target, false, target->IsGeneric()) != TypeCompatibility::INCOMPATIBLE) {
+        return false;
+    }
+    if (typeManager.CheckTypeCompatibility(child, target, false, target->IsGeneric()) !=
+        TypeCompatibility::INCOMPATIBLE) {
+        return false;
+    }
+    // If type contains generic ty, current is node inside @Java class. Otherwise, incompatible types need to be boxed.
+    if (lCnt == rCnt && child->HasGeneric()) {
         return false;
     }
     return true;
 }
 
 // Option Box happens twice before and after instantiation, and must before extend box.
-void AutoBoxing::TryOptionBox(EnumTy& target, Expr& expr)
+void AutoBoxing::TryOptionBox(ModalTy target, Expr& expr)
 {
-    if (expr.GetTy() && target.typeArgs[0] && NeedBoxOption(expr.GetTy(), target.typeArgs[0])) {
-        TryOptionBox(*RawStaticCast<EnumTy*>(target.typeArgs[0].Ty()), expr);
+    CJC_ASSERT(target && target->kind == TypeKind::TYPE_ENUM);
+    auto& enumTy = StaticCast<EnumTy>(*target);
+    if (expr.GetTy() && !enumTy.typeArgs.empty() && NeedBoxOption(expr.GetTy(), enumTy.typeArgs[0])) {
+        // Nested Option keeps the same modal as the outer target (e.g. ??T @local!).
+        TryOptionBox(enumTy.typeArgs[0].With(target.Mode()), expr);
     }
-    auto ed = target.decl;
+    if (expr.GetTy().IsCorrect()) {
+        expr.SetTy(expr.GetTy().With(target.Mode()));
+        if (expr.desugarExpr) {
+            expr.desugarExpr->SetTy(expr.GetTy());
+        }
+    }
+    auto ed = enumTy.decl;
     Ptr<FuncDecl> optionDecl = nullptr;
     for (auto& it : ed->constructors) {
         if (it->identifier == OPTION_VALUE_CTOR) {
@@ -268,7 +289,7 @@ void AutoBoxing::TryOptionBox(EnumTy& target, Expr& expr)
     auto baseFunc = CreateRefExpr(OPTION_VALUE_CTOR);
     baseFunc->EnableAttr(Attribute::IMPLICIT_ADD);
     baseFunc->ref.target = optionDecl;
-    baseFunc->SetTy(typeManager.GetInstantiatedTy(optionDecl->GetTy(), GenerateTypeMapping(*ed, target.TyArgs())));
+    baseFunc->SetTy(typeManager.GetInstantiatedTy(optionDecl->GetTy(), GenerateTypeMapping(*ed, enumTy.TyArgs())));
 
     std::vector<OwnedPtr<FuncArg>> arg;
     if (expr.desugarExpr) {
@@ -279,7 +300,7 @@ void AutoBoxing::TryOptionBox(EnumTy& target, Expr& expr)
 
     auto ce = CreateCallExpr(std::move(baseFunc), std::move(arg));
     ce->callKind = AST::CallKind::CALL_DECLARED_FUNCTION;
-    ce->SetTy({&target});
+    ce->SetTy(target);
     ce->resolvedFunction = optionDecl;
     if (expr.astKind == ASTKind::BLOCK) {
         // For correct deserialization, we need to keep type of block.
@@ -319,14 +340,13 @@ void AutoBoxing::AddOptionBox(Package& pkg)
 
 VisitAction AutoBoxing::AddOptionBoxHandleTupleList(const TupleLit& tl)
 { // Tuple literal allows element been boxed.
-    auto tupleTy = DynamicCast<TupleTy>(tl.DataTy());
-    if (tupleTy == nullptr) {
+    if (!tl.GetTy() || !tl.GetTy()->IsTuple()) {
         return VisitAction::WALK_CHILDREN;
     }
-    auto typeArgs = tupleTy->TyArgs();
+    auto& typeArgs = tl.GetTy()->typeArgs;
     for (size_t i = 0; i < typeArgs.size(); ++i) {
         if (tl.children[i]->GetTy() && typeArgs[i] && NeedBoxOption(tl.children[i]->GetTy(), typeArgs[i])) {
-            TryOptionBox(*RawStaticCast<EnumTy*>(typeArgs[i]), *tl.children[i]);
+            TryOptionBox(typeArgs[i], *tl.children[i]);
         }
     }
     return VisitAction::WALK_CHILDREN;
@@ -352,11 +372,11 @@ VisitAction AutoBoxing::AddOptionBoxHandleArrayLit(ArrayLit& lit)
     }
 
     if (lit.GetTy()->typeArgs.size() == 1) {
-        auto targetTy = lit.GetTy()->TyArg(0);
+        auto targetTy = lit.GetTy()->typeArgs[0];
         CJC_NULLPTR_CHECK(targetTy);
         for (auto& child : lit.children) {
             if (child->GetTy() && NeedBoxOption(child->GetTy(), targetTy)) {
-                TryOptionBox(*RawStaticCast<EnumTy*>(targetTy), *child);
+                TryOptionBox(targetTy, *child);
             }
         }
     }
@@ -374,7 +394,7 @@ VisitAction AutoBoxing::AddOptionBoxHandleIfExpr(const IfExpr& ie)
             AddOptionBoxHandleBlock(*block, ie.GetTy());
         } else if (auto elseIfExpr = DynamicCast<IfExpr*>(ie.elseBody.get());
             elseIfExpr && elseIfExpr->GetTy().IsCorrect() && NeedBoxOption(elseIfExpr->GetTy(), ie.GetTy())) {
-            TryOptionBox(*RawStaticCast<EnumTy*>(ie.DataTy()), *elseIfExpr);
+            TryOptionBox(ie.GetTy(), *elseIfExpr);
             elseIfExpr->SetTy(ie.GetTy());
         }
     }
@@ -402,7 +422,7 @@ void AutoBoxing::AddOptionBoxHandleBlock(Block& block, ModalTy ty)
     }
 
     if (auto lastExpr = DynamicCast<Expr*>(lastExprOrDecl)) {
-        TryOptionBox(StaticCast<EnumTy>(*ty), *lastExpr);
+        TryOptionBox(ty, *lastExpr);
         block.SetTy(lastExpr->GetTy());
     }
 }
@@ -427,7 +447,8 @@ VisitAction AutoBoxing::AddOptionBoxHandleArrayExpr(ArrayExpr& ae)
     if (ignore) {
         return VisitAction::WALK_CHILDREN;
     }
-    auto targetTy = typeManager.GetTypeArgs(*ae.GetTy())[0];
+    CJC_ASSERT(!ae.GetTy()->typeArgs.empty());
+    auto targetTy = ae.GetTy()->typeArgs[0];
 
     Ptr<FuncArg> arg = nullptr;
     if (ae.isValueArray) {
@@ -437,8 +458,8 @@ VisitAction AutoBoxing::AddOptionBoxHandleArrayExpr(ArrayExpr& ae)
         // For RawArray(size, item:T) boxing argIndex is 1, only this case may need option box.
         arg = ae.args[1].get();
     }
-    if (arg && arg->expr && arg->expr->GetTy() && targetTy && NeedBoxOption(arg->expr->GetTy(), ModalTy{targetTy})) {
-        TryOptionBox(*RawStaticCast<EnumTy*>(targetTy.get()), *arg->expr);
+    if (arg && arg->expr && arg->expr->GetTy() && targetTy && NeedBoxOption(arg->expr->GetTy(), targetTy)) {
+        TryOptionBox(targetTy, *arg->expr);
         arg->SetTy(arg->expr->GetTy());
     }
     return VisitAction::WALK_CHILDREN;
@@ -460,7 +481,7 @@ VisitAction AutoBoxing::AddOptionBoxHandleCallExpr(CallExpr& ce)
             auto paramTy = funcTy->paramTys[count];
             // It's possible that childs have different box type, so does not break after match.
             if ((*it)->expr && (*it)->expr->GetTy() && paramTy && NeedBoxOption((*it)->expr->GetTy(), paramTy)) {
-                TryOptionBox(*RawStaticCast<EnumTy*>(paramTy.Ty()), *(*it)->expr);
+                TryOptionBox(paramTy, *(*it)->expr);
                 (*it)->SetTy((*it)->expr->GetTy());
             }
             ++count;
@@ -480,7 +501,7 @@ VisitAction AutoBoxing::AddOptionBoxHandleAssignExpr(const AssignExpr& ae)
         return VisitAction::WALK_CHILDREN;
     }
     if (ae.rightExpr->GetTy() && ae.leftValue->GetTy() && NeedBoxOption(ae.rightExpr->GetTy(), ae.leftValue->GetTy())) {
-        TryOptionBox(*RawStaticCast<EnumTy*>(ae.leftValue->DataTy()), *ae.rightExpr);
+        TryOptionBox(ae.leftValue->GetTy(), *ae.rightExpr);
     }
     return VisitAction::WALK_CHILDREN;
 }
@@ -488,7 +509,7 @@ VisitAction AutoBoxing::AddOptionBoxHandleAssignExpr(const AssignExpr& ae)
 VisitAction AutoBoxing::AddOptionBoxHandleVarDecl(const VarDecl& vd)
 {
     if (vd.initializer && vd.initializer->GetTy() && vd.GetTy() && NeedBoxOption(vd.initializer->GetTy(), vd.GetTy())) {
-        TryOptionBox(*RawStaticCast<EnumTy*>(vd.DataTy()), *vd.initializer);
+        TryOptionBox(vd.GetTy(), *vd.initializer);
     }
     return VisitAction::WALK_CHILDREN;
 }
@@ -499,7 +520,7 @@ VisitAction AutoBoxing::AddOptionBoxHandleReturnExpr(const ReturnExpr& re)
         auto funcTy = RawStaticCast<FuncTy*>(re.refFuncBody->DataTy());
         if (re.expr->GetTy() && funcTy->retTy && NeedBoxOption(re.expr->GetTy(), funcTy->retTy)) {
             auto expr = re.desugarExpr ? re.desugarExpr.get() : re.expr.get();
-            TryOptionBox(*RawStaticCast<EnumTy*>(funcTy->retTy.Ty()), *expr);
+            TryOptionBox(funcTy->retTy, *expr);
         }
     }
     return VisitAction::WALK_CHILDREN;
