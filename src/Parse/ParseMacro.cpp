@@ -47,6 +47,10 @@ void ParserImpl::ParseForeignNodes(
     ParseModifiers(declMods);
     auto decls = ParseForeignDecls(declMods, annos);
     for (auto& decl : decls) {
+        // The FOREIGN branch in ParseNodes skips the common loop tail via 'continue', so keep
+        // MACRO_EXPANDED_NODE in sync here; AddMacroCallNote needs it (together with curMacroCall)
+        // to attach the macro-expansion notes to diagnostics raised on these decls.
+        decl->EnableAttr(Attribute::MACRO_EXPANDED_NODE);
         decl->curFile = this->currentFile;
         decl->curMacroCall = this->curMacroCall;
         AddMacroAttr(*decl);
