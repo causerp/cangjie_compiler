@@ -294,9 +294,9 @@ void GIM::GenericInstantiationManagerImpl::GenericInstantiatePackage(Package& pk
         Walker(curPkg, instantiationWalkerID, instantiator, contextReset).Walk();
     }
     Utils::ProfileRecorder::Stop("GenericInstantiatePackage", "instantiate");
-    Utils::ProfileRecorder::Start("GenericInstantiatePackage", "testManager::PreparePackageForTestIfNeeded");
-    testManager->PreparePackageForTestIfNeeded(*curPkg);
-    Utils::ProfileRecorder::Stop("GenericInstantiatePackage", "testManager::PreparePackageForTestIfNeeded");
+    Utils::ProfileRecorder::Start("GenericInstantiatePackage", "testManager::HandleCreateMock");
+    testManager->HandleCreateMock(*curPkg);
+    Utils::ProfileRecorder::Stop("GenericInstantiatePackage", "testManager::HandleCreateMock");
     // Do not perform rearrange, validation and deletion if errors generated.
     if (diag.GetErrorCount() != 0) {
         return;
