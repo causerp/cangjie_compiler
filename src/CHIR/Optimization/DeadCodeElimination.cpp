@@ -13,6 +13,8 @@
 
 #include <future>
 #include <queue>
+#include <unordered_map>
+#include <vector>
 
 namespace Cangjie::CHIR {
 
@@ -551,6 +553,82 @@ void CreateNullReturnValue(CHIRBuilder& builder, Block* parent, const BlockGroup
     }
 }
 
+// Region depth at the end of `block`, given `depth` on entry. StartRegion pushes and EndRegion
+// pops the innermost frame, mirroring CHIRChecker::CheckStartEndRegionInBlock.
+size_t RegionDepthAfterBlock(const Block& block, size_t depth)
+{
+    for (auto expr : block.GetExpressions()) {
+        if (Is<StartRegion>(expr)) {
+            ++depth;
+        } else if (Is<EndRegion>(expr) && depth > 0) {
+            --depth;
+        }
+    }
+    return depth;
+}
+
+// Region depth on entry to `target`, computed by a forward walk of this block group's CFG from
+// the entry block. Returns 0 when `target` is not reachable, which is the safe answer: an
+// unreachable block never runs, so it must not close a region.
+//
+// A heuristic such as "the entry block has a StartRegion, so a block without an EndRegion still
+// needs one" is wrong after SetMemRegion::FlattenExclave. SetRegions inserts EndRegion before
+// each Exclave terminator, then FlattenExclave inlines the exclave body into the same block
+// group, so the body's blocks sit on a path where the region is already closed. Appending
+// another EndRegion there would double-close it: chirWFC rejects the unmatched EndRegion and
+// the runtime would call CJ_MCC_EndLocalRegion twice for one region.
+size_t RegionDepthAtBlock(const Block& target, const BlockGroup& funcBody)
+{
+    auto entry = funcBody.GetEntryBlock();
+    if (entry == nullptr) {
+        return 0;
+    }
+    std::vector<std::pair<Block*, size_t>> worklist{{entry, 0}};
+    std::unordered_map<const Block*, size_t> depthAtEntry;
+    while (!worklist.empty()) {
+        auto [block, depth] = worklist.back();
+        worklist.pop_back();
+        if (block == nullptr || block->GetParentBlockGroup() != &funcBody) {
+            continue;
+        }
+        // Every path into a block carries the same depth (chirWFC enforces this), so the first
+        // visit is authoritative and revisiting cannot find a new pairing.
+        if (!depthAtEntry.emplace(block, depth).second) {
+            continue;
+        }
+        if (block == &target) {
+            return depth;
+        }
+        auto depthOut = RegionDepthAfterBlock(*block, depth);
+        for (auto expr : block->GetExpressions()) {
+            if (!expr->IsTerminator()) {
+                continue;
+            }
+            for (auto succ : expr->GetSuccessors()) {
+                worklist.emplace_back(succ, depthOut);
+            }
+        }
+    }
+    return 0;
+}
+
+// Close the region on the path ending at `parent` when one is still open there. `cfgBlock` is the
+// block whose CFG position determines the depth; it differs from `parent` when `parent` is a
+// freshly created block that has no predecessor edge yet.
+void AppendEndRegionIfNeeded(CHIRBuilder& builder, Block* parent, const BlockGroup& funcBody, const Block& cfgBlock)
+{
+    if (parent == nullptr) {
+        return;
+    }
+    // `parent` either is `cfgBlock` or continues the path through it, so account for that block's
+    // own StartRegion/EndRegion before deciding.
+    // SetRegions inserts one StartRegion per block group entry, so the depth here is 0 or 1.
+    if (RegionDepthAfterBlock(cfgBlock, RegionDepthAtBlock(cfgBlock, funcBody)) == 0) {
+        return;
+    }
+    parent->AppendExpression(builder.CreateExpression<EndRegion>(builder.GetUnitTy(), parent));
+}
+
 // Return true if there exists a parameter of Nothing type; false otherwise.
 bool HandleFuncWithNothingParamter(CHIRBuilder& builder, const BlockGroup& funcBody)
 {
@@ -602,6 +680,10 @@ template <typename TApply> void HandleNothingTerminator(CHIRBuilder& builder, TA
         {ExprKind::TRY_APPLY, ExprKind::TRY_INVOKE, ExprKind::TRY_INVOKESTATIC}));
     auto newSuccessBlock = builder.CreateBlock(&funcBody);
     CreateNullReturnValue(builder, newSuccessBlock, funcBody);
+    // The new block replaces the TryApply's success edge, so it inherits the region depth on the
+    // path through the block that holds the TryApply.
+    CJC_NULLPTR_CHECK(expr->GetParentBlock());
+    AppendEndRegionIfNeeded(builder, newSuccessBlock, funcBody, *expr->GetParentBlock());
     newSuccessBlock->AppendExpression(builder.CreateTerminator<Exit>(newSuccessBlock));
 
     auto oldSuccessBlock = expr->GetSuccessBlock();
@@ -651,6 +733,7 @@ void DeadCodeElimination::NothingTypeExprEliminationForFunc(BlockGroup& funcBody
         }
         if (isNothingIr) {
             CreateNullReturnValue(builder, block, funcBody);
+            AppendEndRegionIfNeeded(builder, block, funcBody, *block);
             block->AppendExpression(builder.CreateTerminator<Exit>(block));
         }
     }

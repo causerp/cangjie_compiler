@@ -221,7 +221,14 @@ std::unordered_set<BlockGroup*> SetMemRegion::CollectFunctionRegionBlockGroup(co
 
 void SetMemRegion::RunOnFunc(Function& func)
 {
-    SetRegions(CollectFunctionRegionBlockGroup(func));
+    // Wrappers created by WrapVirtualFunc and WrapMutFunc only box/unbox and forward. Do not
+    // collect regions for them: a local Apply result (e.g. Array @local?) would otherwise open a
+    // region here, and EndRegion would reclaim the reference-backed payload before the Box is
+    // returned to the caller. FlattenExclave still runs, because a wrapper copies the raw
+    // method's attributes and so may carry EXCLAVE, which this pass must always clear.
+    if (func.Get<WrappedRawMethod>() == nullptr) {
+        SetRegions(CollectFunctionRegionBlockGroup(func));
+    }
     FlattenExclave(func);
 }
 
