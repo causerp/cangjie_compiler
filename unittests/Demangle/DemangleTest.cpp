@@ -79,10 +79,8 @@ TEST(DemangleTest, PrimitiveTypeModal)
 
 TEST(DemangleTest, ParamInitNoDuplicatedParamList)
 {
-    // _CPI (default-param init): owner `global_test3(Int64, Int64, Int64)` + param-id `c`.
-    // Regression: the param list must appear exactly once — the duplicated form
-    // `global_test3(Int64, Int64, Int64)(Int64, Int64, Int64)::c(...)` is rejected by the
-    // obfuscation config parser (LLVM ERROR: Invalid Symbol).
+    // _CPI (default-param init): the owner renders its own parameter list, and the innermost
+    // (param) decl renders its own list exactly once.
     const char* mangled = "_CPI9pkg1.pkg212global_test3HlllE1cHll";
     Demangler<StdString> demangler(mangled, ".");
     auto di = demangler.Demangle();
@@ -110,9 +108,7 @@ TEST(DemangleTest, GlobalVarInitNoParentheses)
 
 TEST(DemangleTest, CallOperatorKeepsParamList)
 {
-    // The call operator's own name is "()": the double-render guard must not treat those
-    // parentheses as an already-rendered parameter list, or the real parameters are lost
-    // (`default.A.()` instead of `default.A.()(default.A)`).
+    // The call operator's own name is "()"; its parameters still render once.
     const char* mangled = "_CN7default1AclHCNY_1AE";
     Demangler<StdString> demangler(mangled, ".");
     auto di = demangler.Demangle();
@@ -202,49 +198,80 @@ TEST(DemangleTest, ModalParamList)
 
 TEST(DemangleTest, ModalTupleType)
 {
-    // Tuple body `T1_lE` + <type-mode> `QlE`: the mode-set must attach to the whole tuple,
-    // not be misread as a member of the tuple.
+    // Tuple body `T1_lE` + <type-mode> `QlE`: the mode-set attaches to the whole tuple.
     Demangler<StdString> demangler("T1_lEQlE", ".");
     auto di = demangler.Demangle(true);
     ASSERT_TRUE(di.IsValid());
-    // Unlike RawArray/VArray/CPointer, the tuple renderer attaches the mode to the whole
-    // tuple, matching the mangler's WithModal placement (round-trip consistent).
     EXPECT_STREQ("Tuple<Int64> @ local?", di.GetFullName(demangler.ScopeResolution()).Str());
 }
 
-// NOTE (keep-watch): for RawArray/VArray/CPointer the demangler consumes a trailing
-// mode-set into the ELEMENT type (`DemangleNextUnit` appends it before the container's
-// own AppendModeTypeIfExists runs), so `A0_lEQLE` (array @ local! per the mangler's
-// WithModal placement) renders as "RawArray<Int64 @ local!>[]" and collides with the
-// element-modal encoding `A0_lQlEE`. Recorded here to pin current behavior; see the
-// summary for the round-trip asymmetry finding.
+// For RawArray/VArray/CPointer the bodies are not 'E'-terminated: the <type-mode> directly
+// follows the element body and belongs to the container (WithModal placement).
 TEST(DemangleTest, ModalRawArrayType)
 {
-    // RawArray body `A0_lE` (dims-1 = 0, element Int64) + array mode `QLE`.
+    // RawArray body `A0_l` (dims-1 = 0, element Int64, no 'E') + array mode `QLE`.
     Demangler<StdString> demangler("A0_lQLE", ".");
     auto di = demangler.Demangle(true);
     ASSERT_TRUE(di.IsValid());
-    EXPECT_STREQ("RawArray<Int64 @ local!>[]", di.GetFullName(demangler.ScopeResolution()).Str());
+    EXPECT_STREQ("RawArray<Int64>[] @ local!", di.GetFullName(demangler.ScopeResolution()).Str());
 }
 
 TEST(DemangleTest, ModalVArrayType)
 {
-    // VArray body `V3_lE` (size-1 = 3, element Int64) + array mode `QlE`.
+    // VArray body `V3_l` (size-1 = 3, element Int64, no 'E') + array mode `QlE`.
     Demangler<StdString> demangler("V3_lQlE", ".");
     auto di = demangler.Demangle(true);
     ASSERT_TRUE(di.IsValid());
-    EXPECT_STREQ("VArray<Int64 @ local?,$4>", di.GetFullName(demangler.ScopeResolution()).Str());
+    EXPECT_STREQ("VArray<Int64,$4> @ local?", di.GetFullName(demangler.ScopeResolution()).Str());
 }
 
 TEST(DemangleTest, ModalCPointerType)
 {
-    // CPointer body `PlE` (prefix P, element Int64) + `QLE`.
-    Demangler<StdString> demangler("PlEQLE", ".");
+    // CPointer body `Pl` (prefix P, element Int64, no 'E') + pointer mode `QLE`.
+    Demangler<StdString> demangler("PlQLE", ".");
     auto di = demangler.Demangle(true);
     ASSERT_TRUE(di.IsValid());
-    // The mode-set following the element is silently dropped here (neither the element nor
-    // the pointer renders it) — see the round-trip asymmetry note above.
-    EXPECT_STREQ("CPointer<Int64>", di.GetFullName(demangler.ScopeResolution()).Str());
+    EXPECT_STREQ("CPointer<Int64> @ local!", di.GetFullName(demangler.ScopeResolution()).Str());
+}
+
+TEST(DemangleTest, ModalContainerKeepsElementAndContainerModalDistinct)
+{
+    // The mode-set after the element body always belongs to the container.
+    Demangler<StdString> demangler("A0_lQlE", ".");
+    auto di = demangler.Demangle(true);
+    ASSERT_TRUE(di.IsValid());
+    EXPECT_STREQ("RawArray<Int64>[] @ local?", di.GetFullName(demangler.ScopeResolution()).Str());
+}
+
+TEST(DemangleTest, ModalRawArrayOfNestedArrays)
+{
+    // 1-dim array of 2-dim arrays: the inner array keeps its own `[]`, the outer one carries
+    // the mode-set (`A0_` + inner body `A1_l` + outer mode `QLE`).
+    Demangler<StdString> demangler("A0_A1_lQLE", ".");
+    auto di = demangler.Demangle(true);
+    ASSERT_TRUE(di.IsValid());
+    EXPECT_STREQ("RawArray<RawArray<Int64>[][]>[] @ local!",
+        di.GetFullName(demangler.ScopeResolution()).Str());
+}
+
+TEST(DemangleTest, ModalRawArrayOfFunctionType)
+{
+    // Array of a modal-return function type: the inner modal stays on the return type, the
+    // array's own mode-set lands on the container.
+    Demangler<StdString> demangler("A0_F0lQlEiEQLE", ".");
+    auto di = demangler.Demangle(true);
+    ASSERT_TRUE(di.IsValid());
+    EXPECT_STREQ("RawArray<(Int32) -> Int64 @ local?>[] @ local!",
+        di.GetFullName(demangler.ScopeResolution()).Str());
+}
+
+TEST(DemangleTest, ModalFunctionTypeKeepsMode)
+{
+    // A modal function type keeps its mode-set in the rendering.
+    Demangler<StdString> demangler("F0ilEQlE", ".");
+    auto di = demangler.Demangle(true);
+    ASSERT_TRUE(di.IsValid());
+    EXPECT_STREQ("(Int64) -> Int32 @ local?", di.GetFullName(demangler.ScopeResolution()).Str());
 }
 
 TEST(DemangleTest, InvalidModalPayloadRejected)
@@ -263,4 +290,60 @@ TEST(DemangleTest, UnterminatedModalEncodingRejected)
     Demangler<StdString> demangler("Ql", ".");
     auto di = demangler.Demangle(true);
     EXPECT_FALSE(di.IsValid());
+}
+
+// ---------------------------------------------------------------------------
+// Nested local-function chains and compiler-generated wrappers: parent levels render
+// their names only, and `_CV` wrappers place `<compiler generated>` before a single
+// parameter list.
+// ---------------------------------------------------------------------------
+
+TEST(DemangleTest, NestedLocalFunctionParentRendersWithoutParams)
+{
+    // Local function chain: parent levels render their names only; only the innermost
+    // function renders a parameter list.
+    struct Case {
+        const char* mangled;
+        const char* expected;
+    };
+    for (auto c : {Case{"_CN6pkg_re4mainHRNat5ArrayIRNat6StringEEE10test_inputHY2_E12test_input_3Hl",
+                       "pkg_re::main::test_input::test_input_3(Int64)"},
+            Case{"_CN6pkg_re4mainHRNat5ArrayIRNat6StringEEE10test_inputHY2_E",
+                       "pkg_re::main::test_input(std.core::Array<std.core::String>)"},
+            Case{"_CN6pkg_re4mainHRNat5ArrayIRNat6StringEEE10test_inputHY2_E12test_input_3HlQlE",
+                       "pkg_re::main::test_input::test_input_3(Int64 @ local?)"}}) {
+        Demangler<StdString> demangler(c.mangled, "::");
+        auto di = demangler.Demangle();
+        ASSERT_TRUE(di.IsValid()) << c.mangled;
+        std::string full = std::string(di.GetPkgName().Str()) + "::" +
+            std::string(di.GetFullName(demangler.ScopeResolution()).Str());
+        EXPECT_STREQ(c.expected, full.c_str()) << c.mangled;
+    }
+}
+
+TEST(DemangleTest, NestedChainInsideLocalFunctionKeepsInnermostParams)
+{
+    // The middle level carries the same parameter type via substitution but does not
+    // render it; only the innermost level does.
+    const char* mangled = "_CN6pkg_re4mainHRNat5ArrayIRNat6StringEEE10test_inputHY2_E12test_input_2Hl";
+    Demangler<StdString> demangler(mangled, "::");
+    auto di = demangler.Demangle();
+    ASSERT_TRUE(di.IsValid());
+    std::string full =
+        std::string(di.GetPkgName().Str()) + "::" + std::string(di.GetFullName(demangler.ScopeResolution()).Str());
+    EXPECT_STREQ("pkg_re::main::test_input::test_input_2(Int64)", full.c_str());
+}
+
+TEST(DemangleTest, WrappedFunctionSuffixBeforeSingleParamList)
+{
+    // _CV virtual wrapper (real cjc --save-temps symbol): the `<compiler generated>` suffix
+    // precedes ONE parameter list.
+    const char* mangled = "_CVNad10LoggerImpl3logHCNax6TokensERNat6StringEb$Nad10LoggerImplE$CNbl6LoggerE";
+    Demangler<StdString> demangler(mangled, "::");
+    auto di = demangler.Demangle();
+    ASSERT_TRUE(di.IsValid());
+    std::string full =
+        std::string(di.GetPkgName().Str()) + "::" + std::string(di.GetFullName(demangler.ScopeResolution()).Str());
+    EXPECT_STREQ("std.deriving::LoggerImpl::log<compiler generated>(std.ast::Tokens, std.core::String, Bool)",
+        full.c_str());
 }
