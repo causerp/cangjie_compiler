@@ -396,8 +396,9 @@ llvm::Value* HandleGetRTTIStatic(IRBuilder2& irBuilder, const CHIR::Expression& 
 
 llvm::Value* HandleStartRegion(IRBuilder2& irBuilder, [[maybe_unused]] const CHIR::Expression& chirExpr)
 {
-    return irBuilder.CallIntrinsicFunction(
-        llvm::Type::getInt1Ty(irBuilder.GetLLVMContext()), "CJ_MCC_StartLocalRegion", {});
+    irBuilder.CallIntrinsicFunction(
+        llvm::Type::getVoidTy(irBuilder.GetLLVMContext()), "CJ_MCC_StartLocalRegion", {});
+    return nullptr;
 }
 
 llvm::Value* HandleEndRegion(IRBuilder2& irBuilder, [[maybe_unused]] const CHIR::Expression& chirExpr)
