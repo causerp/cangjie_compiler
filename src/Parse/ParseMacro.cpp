@@ -74,6 +74,9 @@ std::vector<OwnedPtr<Node>> ParserImpl::ParseNodes(std::variant<ScopeKind, ExprK
 {
     this->currentFile = currentMacroCall.curFile;
     this->curMacroCall = &currentMacroCall;
+    if (currentMacroCall.astKind == ASTKind::MACRO_EXPAND_DECL && HasModifier(modifiers, TokenKind::FOREIGN)) {
+        std::set<Modifier>(modifiers).swap(foreignBlockModifiers);
+    }
     auto isConnectedByComma = false;
     auto isParamMacro = false;
     auto pInvocation = currentMacroCall.GetConstInvocation();
@@ -119,7 +122,9 @@ std::vector<OwnedPtr<Node>> ParserImpl::ParseNodes(std::variant<ScopeKind, ExprK
                 ParseForeignNodes(modifiers, annos, nodes);
                 continue;
             } else if (CheckIfSeeingDecl(*scopeKind)) {
-                node = nodes.empty() ? ParseDecl(*scopeKind, modifiers, std::move(annos)) : ParseDecl(*scopeKind);
+                // Block modifiers apply to every declaration produced by the macro.
+                node = nodes.empty() ? ParseDecl(*scopeKind, modifiers, std::move(annos))
+                                     : ParseDecl(*scopeKind, foreignBlockModifiers);
             } else {
                 node = ParseExpr();
             }
@@ -610,8 +615,17 @@ template <typename T> OwnedPtr<T> ParserImpl::ParseMacroCall(
         macroCall->curFile->hasMacro = true;
     }
     macroCall->begin = lookahead.Begin();
-    if (!modifiers.empty()) {
-        auto firstModifier = *SortModifierByPos(modifiers)[0];
+    auto explicitModifiers = modifiers;
+    for (const auto& modifier : modifiers) {
+        auto inherited = foreignBlockModifiers.find(modifier);
+        if (inherited != foreignBlockModifiers.end() && inherited->begin == modifier.begin) {
+            // Preserve the block context for reparsing the macro's expansion.
+            macroCall->modifiers.insert(modifier);
+            explicitModifiers.erase(modifier);
+        }
+    }
+    if (!explicitModifiers.empty()) {
+        auto firstModifier = *SortModifierByPos(explicitModifiers)[0];
         DiagExpectNoModifierBefore(firstModifier, "macro call");
         macroCall->begin = firstModifier.begin;
     }
