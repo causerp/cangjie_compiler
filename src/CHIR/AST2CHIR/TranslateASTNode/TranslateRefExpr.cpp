@@ -226,7 +226,9 @@ InvokeCallContext Translator::GenerateInvokeCallContext(const InstCalleeInfo& in
         }
     }
     auto funcName = callee.identifier.Val();
-    if (IsOverflowOpCall(callee)) {
+    // The vtable entry follows the original interface declaration, even when
+    // the resolved callee is an overriding class method.
+    if (IsOverflowOpCall(*originalFuncDecl)) {
         funcName = OverflowStrategyPrefix(strategy) + funcName;
     }
     
