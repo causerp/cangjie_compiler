@@ -572,6 +572,9 @@ bool CompilerInstance::PerformDesugarAfterSema()
 {
     testManager->MarkDeclsForTestIfNeeded(GetSourcePackages());
     compileStrategy->DesugarAfterSema();
+    if (!invocation.globalOptions.enIncrementalCompilation) {
+        testManager->PrepareToMock(GetSourcePackages());
+    }
     if (!srcPkgs.empty() && invocation.globalOptions.NeedDumpASTToFile()) {
         DumpAST(GetSourcePackages(), invocation.globalOptions.output, "desugar");
     }
@@ -588,7 +591,6 @@ bool CompilerInstance::PerformGenericInstantiation()
     if (gim == nullptr) {
         gim = new GenericInstantiationManager(*this);
         CJC_NULLPTR_CHECK(gim);
-        testManager->Init(gim);
     }
     if (!invocation.globalOptions.enIncrementalCompilation) {
         Utils::ProfileRecorder::Start("Generic Instantiation", "ResetGenericInstantiationStage");
