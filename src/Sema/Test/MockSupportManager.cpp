@@ -1319,7 +1319,7 @@ Ptr<Expr> MockSupportManager::ReplaceMemberAccess(
 }
 
 Ptr<Expr> MockSupportManager::ReplaceAssignment(AssignExpr& assignment, bool isInConstructor)
-{   
+{
     if (assignment.TestAttr(Attribute::GENERATED_TO_MOCK)) {
         return nullptr;
     }
@@ -1343,15 +1343,12 @@ Ptr<Expr> MockSupportManager::ReplaceRefExpr(RefExpr& refExpr)
     }
 
     auto target = refExpr.GetTarget();
-
     if (target->astKind != ASTKind::VAR_DECL) {
         return nullptr;
     }
-
     if (target->TestAttr(Attribute::GLOBAL)) {
         return ReplaceTopLevelVariableGetWithAccessor(refExpr);
     }
-
     if (target->TestAttr(Attribute::STATIC)) {
         return ReplaceRefExprWithGetAccessor(refExpr);
     }
@@ -1616,7 +1613,7 @@ Ptr<Expr> MockSupportManager::ReplaceFieldSetWithAccessor(AssignExpr& assignExpr
     } else if (auto memberAccess = As<ASTKind::MEMBER_ACCESS>(leftValue)) {
         accessorCall = ReplaceMemberAccessFieldSetWithAccessor(*memberAccess, isInConstructor);
         if (!accessorCall) {
-            ReplaceSubMemberAccessWithAccessor(*memberAccess, isInConstructor, 
+            ReplaceSubMemberAccessWithAccessor(*memberAccess, isInConstructor,
                 Is<StructDecl>(memberAccess->target->outerDecl) ? &assignExpr : nullptr);
             return &assignExpr;
         }
@@ -1652,7 +1649,7 @@ OwnedPtr<Block> MockSupportManager::GenerateBlockForAssignExpr(AssignExpr& assig
     blockNodes.emplace_back(std::move(tmpVar));
     blockNodes.emplace_back(std::move(accessorCall));
 
-    auto block = CreateBlock(std::move(blockNodes),TypeManager::GetPrimitiveTy(TypeKind::TYPE_UNIT));
+    auto block = CreateBlock(std::move(blockNodes), TypeManager::GetPrimitiveTy(TypeKind::TYPE_UNIT));
     block->EnableAttr(Attribute::GENERATED_TO_MOCK);
     block->EnableAttr(Attribute::COMPILER_ADD);
     return block;
@@ -1746,7 +1743,8 @@ OwnedPtr<CallExpr> MockSupportManager::GenerateAccessorCallForField(OwnedPtr<Exp
         }
         case AccessorKind::FIELD_SETTER:
         case AccessorKind::STATIC_FIELD_SETTER: {
-            nameRefExpr->ty = typeManager.GetFunctionTy({memberRefTy}, TypeManager::GetPrimitiveTy(TypeKind::TYPE_UNIT));
+            nameRefExpr->ty =
+                typeManager.GetFunctionTy({memberRefTy}, TypeManager::GetPrimitiveTy(TypeKind::TYPE_UNIT));
             accessorCall->ty = TypeManager::GetPrimitiveTy(TypeKind::TYPE_UNIT);
             break;
         }
@@ -1948,7 +1946,8 @@ void MockSupportManager::PrepareClassLikeWithDefaults(
         } else {
             nameRefExpr = CreateMemberAccess(std::move(receiver), *originalFunc);
         }
-        nameRefExpr->ty = typeManager.GetInstantiatedTy(originalFunc->ty, GenerateTypeMapping(*originalFunc, implTypeParamsTy));
+        nameRefExpr->ty =
+            typeManager.GetInstantiatedTy(originalFunc->ty, GenerateTypeMapping(*originalFunc, implTypeParamsTy));
         for (auto& tyParam : implTypeParamsTy) {
             nameRefExpr->instTys.emplace_back(tyParam);
         }

@@ -1502,7 +1502,8 @@ void MockManager::GenerateCallHandlerForMethodWithDefault(CallExpr& callExpr)
     CJC_ASSERT(accessorDecl);
 
     auto accessorMa = CreateMemberAccess(ASTCloner::Clone(maExpr->baseExpr.get()), *accessorDecl);
-    accessorMa->ty = typeManager.GetInstantiatedTy(accessorDecl->ty, GenerateTypeMapping(*accessorDecl, maExpr->instTys));
+    accessorMa->ty =
+        typeManager.GetInstantiatedTy(accessorDecl->ty, GenerateTypeMapping(*accessorDecl, maExpr->instTys));
     accessorMa->instTys = maExpr->instTys;
 
     auto call = ASTCloner::Clone(Ptr(&callExpr));
