@@ -1331,10 +1331,14 @@ Ptr<Expr> MockSupportManager::ReplaceAssignment(AssignExpr& assignment, bool isI
     assignment.leftValue->EnableAttr(Attribute::LEFT_VALUE);
 
     if (assignment.isCompound) {
+        if (auto memberAccess = DynamicCast<MemberAccess>(assignment.leftValue.get());
+            memberAccess && Is<StructDecl>(memberAccess->target->outerDecl)) {
+            ReplaceSubMemberAccessWithAccessor(*memberAccess, isInConstructor, &assignment);
+            return assignment.desugarExpr;
+        }
         return nullptr;
     }
 
-    // Support all compound assignments
     return ReplaceFieldSetWithAccessor(assignment, isInConstructor);
 }
 
@@ -1391,7 +1395,7 @@ Ptr<Expr> MockSupportManager::ReplaceRefExprWithGetAccessor(RefExpr& refExpr)
 Ptr<Expr> MockSupportManager::ReplaceVarRefExprWithGetAccessor(RefExpr& refExpr)
 {
     auto target = refExpr.GetTarget();
-    if (target->TestAttr(Attribute::COMPILER_ADD) || !target->outerDecl) {
+    if (!target->outerDecl) {
         return nullptr;
     }
 
@@ -1592,7 +1596,7 @@ OwnedPtr<CallExpr> MockSupportManager::ReplaceRefExprFieldSetWithAccessor(RefExp
 OwnedPtr<CallExpr> MockSupportManager::ReplaceRefExprFieldSetWithAccessorImpl(RefExpr& refExpr)
 {
     auto target = refExpr.GetTarget();
-    if (target->TestAttr(Attribute::COMPILER_ADD) || !target->outerDecl) {
+    if (!target->outerDecl) {
         return nullptr;
     }
     return GenerateSetterCall(refExpr);
